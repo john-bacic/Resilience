@@ -10,7 +10,9 @@ import {
   ChevronRight,
   Home,
   LineChart,
+  Moon,
   NotebookPen,
+  Sun,
   Shield,
   Sparkles
 } from "lucide-react";
@@ -125,16 +127,22 @@ function getRandomId() {
 }
 
 function Card({ className = "", children }) {
-  return <div className={`rounded-3xl border-0 bg-white shadow-sm ${className}`}>{children}</div>;
+  return (
+    <div
+      className={`rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`}
+    >
+      {children}
+    </div>
+  );
 }
 function CardHeader({ className = "", children }) {
   return <div className={`p-6 pb-3 ${className}`}>{children}</div>;
 }
 function CardTitle({ className = "", children }) {
-  return <h3 className={`text-lg font-semibold text-slate-900 ${className}`}>{children}</h3>;
+  return <h3 className={`text-lg font-semibold text-slate-900 dark:text-slate-100 ${className}`}>{children}</h3>;
 }
 function CardDescription({ className = "", children }) {
-  return <p className={`text-sm text-slate-500 ${className}`}>{children}</p>;
+  return <p className={`text-sm text-slate-500 dark:text-slate-400 ${className}`}>{children}</p>;
 }
 function CardContent({ className = "", children }) {
   return <div className={`p-6 pt-3 ${className}`}>{children}</div>;
@@ -143,8 +151,8 @@ function Button({ className = "", variant = "default", children, ...props }) {
   const base = "inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm transition";
   const style =
     variant === "outline"
-      ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-      : "bg-slate-900 text-white hover:bg-slate-800";
+      ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+      : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
   return (
     <button className={`${base} ${style} ${className}`} {...props}>
       {children}
@@ -155,7 +163,7 @@ function Input(props) {
   return (
     <input
       {...props}
-      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm ${
+      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
         props.className || ""
       }`}
     />
@@ -165,7 +173,7 @@ function Textarea(props) {
   return (
     <textarea
       {...props}
-      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm ${
+      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
         props.className || ""
       }`}
     />
@@ -173,15 +181,17 @@ function Textarea(props) {
 }
 function Badge({ children, className = "" }) {
   return (
-    <span className={`rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 ${className}`}>
+    <span
+      className={`rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-100 ${className}`}
+    >
       {children}
     </span>
   );
 }
 function Progress({ value }) {
   return (
-    <div className="h-3 w-full rounded-full bg-slate-200">
-      <div className="h-3 rounded-full bg-slate-900" style={{ width: `${value}%` }} />
+    <div className="h-3 w-full rounded-full bg-slate-200 dark:bg-slate-700">
+      <div className="h-3 rounded-full bg-slate-900 dark:bg-slate-100" style={{ width: `${value}%` }} />
     </div>
   );
 }
@@ -191,7 +201,9 @@ function NavButton({ active, icon: Icon, label, onClick }) {
     <button
       onClick={onClick}
       className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm transition ${
-        active ? "bg-slate-900 text-white shadow-lg" : "bg-white text-slate-600 hover:bg-slate-100"
+        active
+          ? "bg-slate-900 text-white shadow-lg dark:bg-slate-100 dark:text-slate-900"
+          : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -203,12 +215,12 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 function SectionTitle({ icon: Icon, title, subtitle }) {
   return (
     <div className="flex items-start gap-3">
-      <div className="rounded-2xl bg-slate-900 p-2 text-white">
+      <div className="rounded-2xl bg-slate-900 p-2 text-white dark:bg-slate-100 dark:text-slate-900">
         <Icon className="h-4 w-4" />
       </div>
       <div>
-        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
-        <p className="text-sm text-slate-500">{subtitle}</p>
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
       </div>
     </div>
   );
@@ -216,6 +228,7 @@ function SectionTitle({ icon: Icon, title, subtitle }) {
 
 export default function ResilienceApp() {
   const [app, setApp] = useState(DEFAULT_STATE);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("home");
@@ -265,6 +278,16 @@ export default function ResilienceApp() {
       return next;
     });
   }
+
+  useEffect(() => {
+    const storedTheme = localStorage.getItem("resilience-theme");
+    setIsDarkMode(storedTheme ? storedTheme === "dark" : true);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDarkMode);
+    localStorage.setItem("resilience-theme", isDarkMode ? "dark" : "light");
+  }, [isDarkMode]);
 
   useEffect(() => {
     async function loadState() {
@@ -394,11 +417,11 @@ export default function ResilienceApp() {
   }
 
   if (loading) {
-    return <div className="p-10 text-center text-slate-600">Loading your resilience app...</div>;
+    return <div className="p-10 text-center text-slate-600 dark:text-slate-300">Loading your resilience app...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 md:p-8">
+    <div className="min-h-screen bg-slate-100 p-4 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:p-8">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[260px_1fr]">
         <Card>
           <CardHeader>
@@ -413,14 +436,22 @@ export default function ResilienceApp() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={() => setIsDarkMode((prev) => !prev)}
+            >
+              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {isDarkMode ? "Light mode" : "Dark mode"}
+            </Button>
             <NavButton active={tab === "home"} icon={Home} label="Home" onClick={() => setTab("home")} />
             <NavButton active={tab === "log"} icon={NotebookPen} label="Log" onClick={() => setTab("log")} />
             <NavButton active={tab === "diary"} icon={BookOpen} label="Diary" onClick={() => setTab("diary")} />
             <NavButton active={tab === "progress"} icon={LineChart} label="Progress" onClick={() => setTab("progress")} />
-            <div className="rounded-3xl bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Current focus</p>
-              <p className="mt-2 text-lg font-semibold text-slate-900">{weekFocus(app.day)}</p>
-              <p className="mt-2 text-sm text-slate-500">{weeklySummary}</p>
+            <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Current focus</p>
+              <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{weekFocus(app.day)}</p>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{weeklySummary}</p>
             </div>
           </CardContent>
         </Card>
@@ -437,9 +468,9 @@ export default function ResilienceApp() {
                   />
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  <div className="rounded-3xl bg-slate-50 p-5">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Today’s scenario</p>
-                    <p className="mt-3 text-2xl font-semibold leading-snug text-slate-900">{todayScenario}</p>
+                  <div className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Today’s scenario</p>
+                    <p className="mt-3 text-2xl font-semibold leading-snug text-slate-900 dark:text-slate-100">{todayScenario}</p>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     <Button onClick={startReflection}>
@@ -480,8 +511,8 @@ export default function ResilienceApp() {
                   <CardContent>
                     {analysis ? (
                       <div className="space-y-4">
-                        <div className="rounded-3xl bg-slate-50 p-4">
-                          <p className="text-sm text-slate-500">Triggered steps</p>
+                        <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Triggered steps</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {analysis.step1 && <Badge>Step 1: Facts vs Story</Badge>}
                             {analysis.step2 && <Badge>Step 2: Control Filter</Badge>}
@@ -539,7 +570,7 @@ export default function ResilienceApp() {
                         </Button>
                       </div>
                     ) : (
-                      <p className="rounded-3xl bg-slate-50 p-5 text-sm text-slate-500">
+                      <p className="rounded-3xl bg-slate-50 p-5 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                         Analyze an entry to trigger guided prompts.
                       </p>
                     )}
@@ -555,16 +586,16 @@ export default function ResilienceApp() {
                 </CardHeader>
                 <CardContent>
                   {app.diary.length === 0 ? (
-                    <div className="rounded-3xl bg-slate-50 p-8 text-center text-slate-500">No diary entries yet.</div>
+                    <div className="rounded-3xl bg-slate-50 p-8 text-center text-slate-500 dark:bg-slate-800 dark:text-slate-400">No diary entries yet.</div>
                   ) : (
                     <div className="grid gap-4">
                       {app.diary.map((entry) => (
-                        <div key={entry.id} className="rounded-3xl bg-slate-50 p-5">
-                          <h3 className="text-lg font-semibold text-slate-900">{entry.title}</h3>
-                          <p className="text-sm text-slate-500">
+                        <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
                             {new Date(entry.createdAt).toLocaleDateString()} - Mood {entry.moodBefore} to {entry.moodAfter}
                           </p>
-                          <p className="mt-2 text-sm text-slate-700">{entry.lesson || "No lesson logged."}</p>
+                          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
                         </div>
                       ))}
                     </div>
@@ -580,15 +611,15 @@ export default function ResilienceApp() {
                     <SectionTitle icon={LineChart} title="Progress" subtitle="How your patterns are moving." />
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between text-sm text-slate-500">
+                    <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
                       <span>{app.lastCompletedDay}/30 days complete</span>
                       <span>{completionPercent}%</span>
                     </div>
                     <Progress value={completionPercent} />
-                    <p className="text-sm text-slate-700">Entries: {diaryStats.total}</p>
-                    <p className="text-sm text-slate-700">Most triggered: {diaryStats.topStep}</p>
-                    <p className="text-sm text-slate-700">Average mood shift: {diaryStats.averageShift}</p>
-                    <p className="text-sm text-slate-700">Most common story: {diaryStats.topStory}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">Entries: {diaryStats.total}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">Most triggered: {diaryStats.topStep}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">Average mood shift: {diaryStats.averageShift}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">Most common story: {diaryStats.topStory}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -653,7 +684,7 @@ export default function ResilienceApp() {
         </div>
       )}
 
-      <div className="mx-auto mt-6 flex max-w-7xl items-center justify-between rounded-3xl bg-white px-5 py-4 text-sm text-slate-500 shadow-sm">
+      <div className="mx-auto mt-6 flex max-w-7xl items-center justify-between rounded-3xl bg-white px-5 py-4 text-sm text-slate-500 shadow-sm dark:border dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4" />
           <span>Reminder {app.reminderTime}</span>
