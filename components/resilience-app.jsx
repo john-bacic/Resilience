@@ -225,7 +225,7 @@ function Input({ className = "", onFocus, onBlur, onChange, value, clearable = t
   const hasValue = String(value ?? "").length > 0;
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0 max-w-full">
       <input
         {...props}
         value={value}
@@ -269,7 +269,7 @@ function Textarea({ className = "", onInput, onFocus, onBlur, onChange, value, c
   }, [value]);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0 max-w-full">
       <textarea
         {...props}
         ref={textareaRef}
@@ -332,7 +332,7 @@ function NavButton({ active, icon: Icon, label, onClick }) {
         active
           ? "bg-slate-900 text-white shadow-lg dark:bg-slate-100 dark:text-slate-900"
           : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-      } min-w-[120px] justify-center md:min-w-0 md:justify-start`}
+      } min-w-0 flex-1 basis-0 justify-center px-2 py-3 text-xs sm:px-4 sm:text-sm md:flex-none md:justify-start`}
     >
       <Icon className="h-4 w-4" />
       <span>{label}</span>
@@ -342,13 +342,13 @@ function NavButton({ active, icon: Icon, label, onClick }) {
 
 function SectionTitle({ icon: Icon, title, subtitle }) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="rounded-2xl bg-slate-900 p-2 text-white dark:bg-slate-100 dark:text-slate-900">
+    <div className="flex min-w-0 items-start gap-3">
+      <div className="shrink-0 rounded-2xl bg-slate-900 p-2 text-white dark:bg-slate-100 dark:text-slate-900">
         <Icon className="h-4 w-4" />
       </div>
-      <div>
-        <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+      <div className="min-w-0">
+        <h2 className="break-words text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+        <p className="break-words text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
       </div>
     </div>
   );
@@ -1126,9 +1126,9 @@ export default function ResilienceApp() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 p-4 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:p-8">
-      <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[260px_1fr]">
-        <Card>
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-100 p-4 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:p-8">
+      <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+        <Card className="min-w-0">
           <CardContent className="space-y-3 pt-6">
             <div
               className="cursor-pointer rounded-3xl bg-slate-50 p-4 dark:bg-slate-800"
@@ -1244,14 +1244,14 @@ export default function ResilienceApp() {
                 </div>
               )}
             </div>
-            <div className="-mx-2 overflow-x-auto pb-1 md:mx-0 md:overflow-visible md:pb-0">
-              <div className="flex gap-2 px-2 md:grid md:px-0">
+            <div className="min-w-0 pb-1 md:pb-0">
+              <div className="flex min-w-0 gap-1 sm:gap-2 md:grid md:gap-2 md:px-0">
                 <NavButton active={tab === "home"} icon={Home} label="Home" onClick={() => setTab("home")} />
                 <NavButton active={tab === "log"} icon={NotebookPen} label="Log" onClick={() => setTab("log")} />
                 <NavButton
                   active={tab === "progress"}
                   icon={LineChart}
-                  label={`Progress ${app.lastCompletedDay}/30`}
+                  label="Progress"
                   onClick={() => setTab("progress")}
                 />
               </div>
@@ -1259,8 +1259,12 @@ export default function ResilienceApp() {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="grid gap-6">
+        <div className="min-w-0 space-y-6">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="grid min-w-0 gap-6"
+          >
             {tab === "home" && (
               <div className="grid gap-6">
                 <Card>
@@ -1288,7 +1292,7 @@ export default function ResilienceApp() {
                           </Button>
                         </div>
                       </div>
-                      <p className="mt-3 pr-8 text-2xl font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                      <p className="mt-3 break-words pr-8 text-2xl font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere] dark:text-slate-100">
                         {todayScenario}
                       </p>
                       {dailyScenarioSource === "ai" && (
@@ -1313,7 +1317,7 @@ export default function ResilienceApp() {
 
             {tab === "log" && (
               <div className="grid gap-6">
-                <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
+                <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
                   <Card>
                     <CardHeader>
                       <SectionTitle icon={NotebookPen} title="Log what happened" subtitle="Write it and get guided." />
@@ -1684,11 +1688,11 @@ export default function ResilienceApp() {
         </div>
       )}
 
-      <div className="mx-auto mt-6 flex max-w-7xl items-center justify-between rounded-3xl bg-white px-5 py-4 text-sm text-slate-500 shadow-sm dark:border dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+      <div className="mx-auto mt-6 flex w-full min-w-0 max-w-7xl flex-wrap items-center justify-between gap-2 gap-y-3 rounded-3xl bg-white px-4 py-4 text-sm text-slate-500 shadow-sm dark:border dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 sm:px-5">
         <button
           type="button"
           onClick={openReminderModal}
-          className="flex items-center gap-2 rounded-lg px-2 py-1 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2 py-1 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           <Calendar className="h-4 w-4" />
           <span>Reminder {app.reminderTime}</span>
@@ -1697,7 +1701,7 @@ export default function ResilienceApp() {
           <button
             type="button"
             onClick={isPushEnabled ? disablePushNotifications : enablePushNotifications}
-            className="flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="flex min-w-0 max-w-full shrink items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <Bell className="h-4 w-4" />
             <span>
@@ -1709,15 +1713,15 @@ export default function ResilienceApp() {
             </span>
           </button>
         ) : (
-          <span className="text-xs text-slate-400 dark:text-slate-500">Browser notifications unavailable</span>
+          <span className="min-w-0 shrink text-xs text-slate-400 dark:text-slate-500">Browser notifications unavailable</span>
         )}
         {saving ? (
-          <span>Saving...</span>
+          <span className="shrink-0">Saving...</span>
         ) : (
           <button
             type="button"
             onClick={() => setIsMoodModalOpen(true)}
-            className="rounded-lg px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="min-w-0 shrink rounded-lg px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             Mood: {currentMood.value} {currentMood.emoji}
           </button>
