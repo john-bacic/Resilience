@@ -1387,21 +1387,11 @@ export default function ResilienceApp() {
                       <div className="grid gap-4">
                         {app.diary.map((entry) => (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">
-                                  {new Date(entry.createdAt).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
-                                  Edit
-                                </Button>
-                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
-                                  Delete
-                                </Button>
-                              </div>
+                            <div>
+                              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {new Date(entry.createdAt).toLocaleDateString()}
+                              </p>
                             </div>
                             {entry.scenario && (
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
@@ -1412,6 +1402,14 @@ export default function ResilienceApp() {
                               </p>
                             )}
                             <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
+                            <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
+                              <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
+                                Edit
+                              </Button>
+                              <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1528,21 +1526,11 @@ export default function ResilienceApp() {
                       <div className="grid gap-4">
                         {progressDiaryEntries.map((entry) => (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">
-                                  {new Date(entry.createdAt).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
-                                  Edit
-                                </Button>
-                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
-                                  Delete
-                                </Button>
-                              </div>
+                            <div>
+                              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {new Date(entry.createdAt).toLocaleDateString()}
+                              </p>
                             </div>
                             {entry.scenario && (
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
@@ -1553,6 +1541,14 @@ export default function ResilienceApp() {
                               </p>
                             )}
                             <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
+                            <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
+                              <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
+                                Edit
+                              </Button>
+                              <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
