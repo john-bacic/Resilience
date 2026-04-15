@@ -1,6 +1,12 @@
 import { defaultState } from "@/lib/default-state";
 import { getDb } from "@/lib/db";
 
+let inMemoryState = { ...defaultState };
+
+function hasDatabaseConfig() {
+  return Boolean(process.env.POSTGRES_URL || process.env.DATABASE_URL);
+}
+
 async function ensureStateTable() {
   const db = getDb();
   await db`
@@ -13,6 +19,10 @@ async function ensureStateTable() {
 }
 
 export async function GET() {
+  if (!hasDatabaseConfig()) {
+    return Response.json({ state: inMemoryState, source: "memory" });
+  }
+
   try {
     const db = getDb();
     await ensureStateTable();
@@ -33,14 +43,20 @@ export async function GET() {
 }
 
 export async function PUT(request) {
+  const body = await request.json();
+  const state = body?.state;
+  if (!state || typeof state !== "object") {
+    return Response.json({ error: "Invalid state payload" }, { status: 400 });
+  }
+  const safeState = { ...defaultState, ...state };
+
+  if (!hasDatabaseConfig()) {
+    inMemoryState = safeState;
+    return Response.json({ state: safeState, source: "memory" });
+  }
+
   try {
     const db = getDb();
-    const body = await request.json();
-    const state = body?.state;
-    if (!state || typeof state !== "object") {
-      return Response.json({ error: "Invalid state payload" }, { status: 400 });
-    }
-    const safeState = { ...defaultState, ...state };
     await ensureStateTable();
     await db`
       INSERT INTO app_state (id, state, updated_at)

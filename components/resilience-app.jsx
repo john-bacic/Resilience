@@ -1,17 +1,20 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen,
   Brain,
   Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ChevronRight,
   Home,
   LineChart,
   Moon,
   NotebookPen,
+  RefreshCw,
   Sun,
   Shield,
   Sparkles
@@ -52,6 +55,7 @@ const SCENARIOS = [
 
 const DEFAULT_STATE = {
   day: 1,
+  startDate: null,
   reminderTime: "8:00 AM",
   tone: "Balanced",
   intentions: [],
@@ -70,6 +74,24 @@ function weekFocus(day) {
 
 function scenarioForDay(day) {
   return SCENARIOS[(day - 1) % SCENARIOS.length];
+}
+
+function toDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function programDayFromStart(startDateKey) {
+  if (!startDateKey) return 1;
+  const [year, month, day] = String(startDateKey).split("-").map(Number);
+  if (!year || !month || !day) return 1;
+  const start = new Date(year, month - 1, day);
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffDays = Math.floor((todayStart - start) / 86400000) + 1;
+  return Math.max(1, Math.min(30, diffDays));
 }
 
 function clampMood(value) {
@@ -169,13 +191,28 @@ function Input(props) {
     />
   );
 }
-function Textarea(props) {
+function Textarea({ className = "", onInput, value, ...props }) {
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
   return (
     <textarea
       {...props}
-      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
-        props.className || ""
-      }`}
+      ref={textareaRef}
+      rows={1}
+      value={value}
+      onInput={(event) => {
+        event.currentTarget.style.height = "auto";
+        event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+        if (onInput) onInput(event);
+      }}
+      className={`w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
     />
   );
 }
@@ -204,7 +241,7 @@ function NavButton({ active, icon: Icon, label, onClick }) {
         active
           ? "bg-slate-900 text-white shadow-lg dark:bg-slate-100 dark:text-slate-900"
           : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-      }`}
+      } min-w-[120px] justify-center md:min-w-0 md:justify-start`}
     >
       <Icon className="h-4 w-4" />
       <span>{label}</span>
@@ -226,12 +263,42 @@ function SectionTitle({ icon: Icon, title, subtitle }) {
   );
 }
 
+function AiBadgeIcon() {
+  return (
+    <svg
+      width="22"
+      height="21"
+      viewBox="0 0 26 25"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="text-slate-900 dark:text-white"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M1.27022 6.07834C0.94312 5.957 0.60315 5.8616 0.252881 5.79441C0.227111 5.78954 0.201341 5.78477 0.175571 5.78009C-0.0585236 5.7382 -0.0585236 5.40146 0.175571 5.35958C0.201341 5.3549 0.227111 5.35012 0.252881 5.34526C0.60315 5.27805 0.943097 5.18266 1.27022 5.06132C1.46596 4.98872 1.65713 4.90692 1.84318 4.81629C3.1316 4.18877 4.17516 3.14191 4.80062 1.8492C4.89095 1.66254 4.97257 1.47076 5.04485 1.27427C5.1658 0.946176 5.26089 0.605119 5.32786 0.253707C5.33271 0.227853 5.33747 0.201998 5.34214 0.176144C5.38389 -0.0587147 5.71953 -0.0587147 5.76128 0.176144C5.76594 0.201998 5.7707 0.227853 5.77555 0.253707C5.84254 0.605119 5.93763 0.946176 6.05856 1.27427C6.13093 1.47075 6.21246 1.66254 6.30279 1.8492C6.92828 3.14182 7.97173 4.18879 9.26024 4.81629C9.44628 4.90692 9.63735 4.98872 9.83311 5.06132C10.1602 5.18267 10.5002 5.27807 10.8504 5.34526C10.8762 5.35012 10.902 5.3549 10.9278 5.35958C11.1618 5.40147 11.1618 5.73821 10.9278 5.78009C10.902 5.78477 10.8762 5.78954 10.8504 5.79441C10.5002 5.86161 10.1602 5.95701 9.83311 6.07834C9.63736 6.15095 9.44629 6.23275 9.26024 6.32337C7.97173 6.9509 6.92826 7.99775 6.30279 9.29047C6.21246 9.47712 6.13093 9.66882 6.05856 9.86521C5.93761 10.1934 5.84253 10.5345 5.77555 10.8859C5.7707 10.9116 5.76594 10.9376 5.76128 10.9634C5.71952 11.1983 5.38388 11.1983 5.34214 10.9634C5.33747 10.9376 5.33271 10.9116 5.32786 10.8859C5.26088 10.5345 5.16579 10.1934 5.04485 9.86521C4.97257 9.66883 4.89095 9.47713 4.80062 9.29047C4.17514 7.99775 3.13169 6.95088 1.84318 6.32337C1.65713 6.23275 1.46597 6.15095 1.27022 6.07834ZM9.09045 14.4215C8.86167 14.3598 8.62974 14.3054 8.39484 14.259C8.35811 14.2518 8.32139 14.2447 8.28457 14.2379L8.27335 14.2358L8.25826 14.233C8.23501 14.2288 8.20951 14.2242 8.15851 14.2151L8.14064 14.2118C7.7664 14.1408 7.7664 13.6031 8.14064 13.532L8.15851 13.5288C8.20951 13.5197 8.23501 13.5151 8.25826 13.5109L8.27335 13.5081L8.28457 13.506C8.32139 13.4992 8.35811 13.4921 8.39484 13.4848C8.62974 13.4385 8.86167 13.3841 9.09045 13.3223C9.28584 13.2695 9.47897 13.2111 9.66951 13.1474C12.7534 12.1161 15.1798 9.68147 16.2078 6.58776C16.2713 6.3966 16.3295 6.20284 16.3822 6.00682C16.4438 5.77728 16.4979 5.5446 16.5441 5.30893C16.5513 5.27208 16.5584 5.23524 16.5652 5.19831L16.5673 5.18705L16.5701 5.17191C16.5743 5.14885 16.5788 5.12363 16.5877 5.07354L16.588 5.07183L16.5912 5.0539C16.662 4.67844 17.1979 4.67844 17.2688 5.0539L17.272 5.07183C17.2811 5.123 17.2856 5.14858 17.2899 5.17191L17.2926 5.18704L17.2947 5.19831C17.3015 5.23524 17.3086 5.27208 17.3158 5.30893C17.3621 5.5446 17.4162 5.77729 17.4778 6.00682C17.5305 6.20284 17.5887 6.3966 17.6522 6.58776C18.6801 9.6817 21.1068 12.1161 24.1905 13.1474C24.381 13.2111 24.5741 13.2695 24.7695 13.3223C24.9983 13.3841 25.2302 13.4384 25.4651 13.4848C25.5018 13.492 25.5386 13.4992 25.5754 13.506L25.5866 13.5081L25.6017 13.5109C25.625 13.5151 25.6505 13.5197 25.7015 13.5288L25.7193 13.532C26.0936 13.6031 26.0936 14.1408 25.7193 14.2118L25.7015 14.2151L25.6475 14.2247L25.6017 14.233L25.5866 14.2358L25.5754 14.2379C25.5386 14.2447 25.5018 14.2518 25.4651 14.259C25.2302 14.3054 24.9983 14.3598 24.7695 14.4215C24.5741 14.4744 24.381 14.5328 24.1905 14.5965C21.1066 15.6278 18.6801 18.0624 17.6522 21.1561C17.5887 21.3473 17.5305 21.541 17.4778 21.7371C17.4162 21.9666 17.3621 22.1993 17.3158 22.4349C17.3086 22.4718 17.3015 22.5086 17.2947 22.5456L17.2926 22.5568L17.2899 22.572L17.2837 22.606L17.2724 22.6701L17.2688 22.69C17.1979 23.0654 16.662 23.0654 16.5912 22.69L16.588 22.6721C16.5789 22.621 16.5743 22.5952 16.5701 22.572L16.5673 22.5568L16.5652 22.5456C16.5584 22.5086 16.5513 22.4718 16.5441 22.4349C16.4979 22.1993 16.4438 21.9666 16.3822 21.7371C16.3294 21.541 16.2713 21.3473 16.2078 21.1561C15.1798 18.0622 12.7531 15.6278 9.6695 14.5965C9.47897 14.5328 9.28584 14.4744 9.09045 14.4215ZM3.92907 21.6241C4.32243 21.6995 4.69507 21.8314 5.03835 22.0112C5.19108 22.0912 5.33798 22.1806 5.47824 22.2788C5.86929 22.5523 6.20914 22.8933 6.48174 23.2856C6.57961 23.4263 6.66877 23.5736 6.74843 23.7269C6.92765 24.0713 7.05911 24.4451 7.13426 24.8398C7.1374 24.8561 7.14045 24.8724 7.14333 24.8888C7.16972 25.0371 7.38172 25.0371 7.40813 24.8888C7.411 24.8724 7.41397 24.8561 7.41711 24.8398C7.49226 24.4451 7.62372 24.0713 7.80294 23.7269C7.88267 23.5736 7.97184 23.4263 8.06963 23.2856C8.34222 22.8933 8.68217 22.5523 9.07313 22.2788C9.21338 22.1806 9.36027 22.0912 9.51302 22.0112C9.8563 21.8314 10.2289 21.6995 10.6223 21.6241C10.6386 21.621 10.6548 21.618 10.6711 21.615C10.8189 21.5886 10.8189 21.3759 10.6711 21.3495C10.6548 21.3465 10.6386 21.3435 10.6223 21.3404C10.2289 21.265 9.8563 21.1331 9.51302 20.9533C9.36028 20.8733 9.21339 20.7839 9.07313 20.6857C8.68217 20.4122 8.34222 20.0712 8.06963 19.6789C7.97184 19.5382 7.88268 19.3908 7.80294 19.2376C7.62371 18.8932 7.49225 18.5194 7.41711 18.1247C7.41397 18.1084 7.411 18.0921 7.40813 18.0757C7.38173 17.9274 7.16974 17.9274 7.14333 18.0757C7.14045 18.0921 7.1374 18.1084 7.13426 18.1247C7.0591 18.5194 6.92765 18.8932 6.74843 19.2376C6.66878 19.3908 6.57962 19.5382 6.48174 19.6789C6.20914 20.0712 5.86926 20.4122 5.47824 20.6857C5.33799 20.7839 5.19109 20.8733 5.03835 20.9533C4.69507 21.1331 4.32243 21.265 3.92907 21.3404C3.91281 21.3435 3.89656 21.3465 3.88022 21.3495C3.73242 21.3758 3.73242 21.5886 3.88022 21.615C3.89656 21.618 3.91281 21.621 3.92907 21.6241Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export default function ResilienceApp() {
   const [app, setApp] = useState(DEFAULT_STATE);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("home");
+  const [isFocusOpen, setIsFocusOpen] = useState(true);
+  const [dailyScenario, setDailyScenario] = useState("");
+  const [dailyScenarioSource, setDailyScenarioSource] = useState("fallback");
+  const [isRefreshingScenario, setIsRefreshingScenario] = useState(false);
+  const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+  const [isMoodModalOpen, setIsMoodModalOpen] = useState(false);
+  const [reminderDraft, setReminderDraft] = useState("08:00");
+  const [isPrefillingReflection, setIsPrefillingReflection] = useState(false);
+  const [selectedProgressDate, setSelectedProgressDate] = useState(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflection, setReflection] = useState({
     reaction: "",
@@ -244,6 +311,7 @@ export default function ResilienceApp() {
   });
   const [eventText, setEventText] = useState("");
   const [analysis, setAnalysis] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [eventForm, setEventForm] = useState({
     fact: "",
     story: "",
@@ -282,12 +350,20 @@ export default function ResilienceApp() {
   useEffect(() => {
     const storedTheme = localStorage.getItem("resilience-theme");
     setIsDarkMode(storedTheme ? storedTheme === "dark" : true);
+    const storedFocusState = localStorage.getItem("resilience-focus-open");
+    if (storedFocusState) {
+      setIsFocusOpen(storedFocusState === "true");
+    }
   }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDarkMode);
     localStorage.setItem("resilience-theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
+
+  useEffect(() => {
+    localStorage.setItem("resilience-focus-open", String(isFocusOpen));
+  }, [isFocusOpen]);
 
   useEffect(() => {
     async function loadState() {
@@ -305,7 +381,43 @@ export default function ResilienceApp() {
     void loadState();
   }, []);
 
-  const todayScenario = useMemo(() => scenarioForDay(app.day), [app.day]);
+  const currentDateKey = useMemo(() => toDateKey(new Date()), []);
+  const currentProgramDay = useMemo(() => programDayFromStart(app.startDate), [app.startDate]);
+
+  async function loadDailyScenario() {
+    try {
+      setIsRefreshingScenario(true);
+      const params = new URLSearchParams({
+        day: String(currentProgramDay),
+        t: String(Date.now())
+      });
+      if (dailyScenario) {
+        params.set("avoid", dailyScenario);
+      }
+      const response = await fetch(`/api/scenario?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (payload?.scenario) {
+        setDailyScenario(payload.scenario);
+        setDailyScenarioSource(payload.source || "fallback");
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsRefreshingScenario(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!loading) {
+      void loadDailyScenario();
+    }
+  }, [currentProgramDay, loading]);
+
+  const todayScenario = useMemo(
+    () => dailyScenario || scenarioForDay(currentProgramDay),
+    [currentProgramDay, dailyScenario]
+  );
   const completionPercent = useMemo(() => Math.round((app.lastCompletedDay / 30) * 100), [app.lastCompletedDay]);
   const diaryStats = useMemo(() => {
     const total = app.diary.length;
@@ -336,7 +448,7 @@ export default function ResilienceApp() {
   }, [app.diary]);
 
   const weeklySummary = useMemo(() => {
-    const focus = weekFocus(app.day);
+    const focus = weekFocus(currentProgramDay);
     const messages = {
       "Facts vs Story": "You are separating what happened from what your mind adds to it.",
       "Control Filter": "You are cutting wasted energy on what is outside your control.",
@@ -344,7 +456,7 @@ export default function ResilienceApp() {
       Resilience: "You are building steadiness through repetition, not perfection."
     };
     return messages[focus];
-  }, [app.day]);
+  }, [currentProgramDay]);
 
   function startReflection() {
     setReflection({
@@ -359,39 +471,124 @@ export default function ResilienceApp() {
     setReflectionOpen(true);
   }
 
+  function prefillReflectionFromReaction(reactionText) {
+    async function runPrefill() {
+      const trimmed = String(reactionText || "").trim();
+      if (!trimmed) return;
+      try {
+        setIsPrefillingReflection(true);
+        const response = await fetch("/api/reflection", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reaction: trimmed,
+            scenario: todayScenario
+          })
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const suggested = payload?.reflection;
+        if (!suggested) return;
+
+        setReflection((prev) => ({
+          ...prev,
+          facts: prev.facts || suggested.facts || "",
+          story: prev.story || suggested.story || "",
+          outsideControl: prev.outsideControl || suggested.outsideControl || "",
+          insideControl: prev.insideControl || suggested.insideControl || "",
+          chosenResponse: prev.chosenResponse || suggested.chosenResponse || "",
+          intention: prev.intention || suggested.intention || ""
+        }));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsPrefillingReflection(false);
+      }
+    }
+
+    void runPrefill();
+  }
+
   function saveReflection() {
     const entry = {
       id: getRandomId(),
-      day: app.day,
+      day: currentProgramDay,
       scenario: todayScenario,
       ...reflection,
+      createdAt: new Date().toISOString()
+    };
+    const diaryEntryFromReflection = {
+      id: getRandomId(),
+      day: currentProgramDay,
+      title: `Morning reflection: ${todayScenario.slice(0, 45)}`,
+      rawText: reflection.reaction || "",
+      scenario: todayScenario,
+      source: "morning_reflection",
+      triggeredSteps: [],
+      fact: reflection.facts || "",
+      story: reflection.story || "",
+      outsideControl: reflection.outsideControl || "",
+      insideControl: reflection.insideControl || "",
+      chosenResponse: reflection.chosenResponse || "",
+      lesson: reflection.intention || reflection.chosenResponse || "",
+      moodBefore: null,
+      moodAfter: null,
       createdAt: new Date().toISOString()
     };
     setAndPersist((prev) => ({
       ...prev,
       reflections: [entry, ...prev.reflections],
+      diary: [diaryEntryFromReflection, ...prev.diary],
       intentions: reflection.intention
-        ? [{ id: entry.id, text: reflection.intention, day: app.day }, ...prev.intentions]
+        ? [{ id: entry.id, text: reflection.intention, day: currentProgramDay }, ...prev.intentions]
         : prev.intentions,
-      lastCompletedDay: Math.max(prev.lastCompletedDay, prev.day),
-      streak: prev.lastCompletedDay === prev.day - 1 || prev.lastCompletedDay === 0 ? prev.streak + 1 : prev.streak,
-      day: prev.day < 30 ? prev.day + 1 : 30
+      startDate: prev.startDate || currentDateKey,
+      lastCompletedDay: Math.max(prev.lastCompletedDay, currentProgramDay),
+      streak:
+        prev.lastCompletedDay === currentProgramDay - 1 || prev.lastCompletedDay === 0
+          ? prev.streak + 1
+          : prev.streak
     }));
     setReflectionOpen(false);
   }
 
   function analyzeEvent() {
-    setAnalysis(detectSteps(eventText));
-    setEventForm({
-      fact: "",
-      story: "",
-      outsideControl: "",
-      insideControl: "",
-      chosenResponse: "",
-      lesson: "",
-      moodBefore: 4,
-      moodAfter: 6
-    });
+    async function runAnalysis() {
+      try {
+        setIsAnalyzing(true);
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entryText: eventText })
+        });
+        if (!response.ok) {
+          setAnalysis(detectSteps(eventText));
+          return;
+        }
+        const payload = await response.json();
+        const aiAnalysis = payload?.analysis;
+        if (!aiAnalysis) {
+          setAnalysis(detectSteps(eventText));
+          return;
+        }
+        setAnalysis(aiAnalysis.triggered || detectSteps(eventText));
+        setEventForm((prev) => ({
+          ...prev,
+          fact: aiAnalysis.fact || "",
+          story: aiAnalysis.story || "",
+          outsideControl: aiAnalysis.outsideControl || "",
+          insideControl: aiAnalysis.insideControl || "",
+          chosenResponse: aiAnalysis.chosenResponse || "",
+          lesson: aiAnalysis.lesson || ""
+        }));
+      } catch (error) {
+        console.error(error);
+        setAnalysis(detectSteps(eventText));
+      } finally {
+        setIsAnalyzing(false);
+      }
+    }
+    void runAnalysis();
   }
 
   function saveEventEntry() {
@@ -402,6 +599,7 @@ export default function ResilienceApp() {
     if (analysis.step3) triggeredSteps.push("step3");
     const diaryEntry = {
       id: getRandomId(),
+      day: currentProgramDay,
       title: eventText.slice(0, 55) || "Untitled entry",
       rawText: eventText,
       triggeredSteps,
@@ -410,11 +608,109 @@ export default function ResilienceApp() {
       moodAfter: clampMood(eventForm.moodAfter),
       createdAt: new Date().toISOString()
     };
-    setAndPersist((prev) => ({ ...prev, diary: [diaryEntry, ...prev.diary] }));
+    setAndPersist((prev) => {
+      const nextCompletedDay = Math.max(prev.lastCompletedDay, currentProgramDay);
+      return {
+        ...prev,
+        startDate: prev.startDate || currentDateKey,
+        diary: [diaryEntry, ...prev.diary],
+        lastCompletedDay: nextCompletedDay,
+        streak: nextCompletedDay > 0 ? Math.max(prev.streak, 1) : prev.streak
+      };
+    });
     setEventText("");
     setAnalysis(null);
-    setTab("diary");
+    setTab("log");
   }
+
+  function displayTo24HourTime(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "08:00";
+    const amPmMatch = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!amPmMatch) {
+      const nativeTime = raw.match(/^(\d{2}):(\d{2})$/);
+      if (!nativeTime) return "08:00";
+      return `${nativeTime[1]}:${nativeTime[2]}`;
+    }
+    let hour = Number(amPmMatch[1]);
+    const minute = amPmMatch[2];
+    const meridiem = amPmMatch[3].toUpperCase();
+    if (meridiem === "AM") {
+      if (hour === 12) hour = 0;
+    } else if (hour !== 12) {
+      hour += 12;
+    }
+    return `${String(hour).padStart(2, "0")}:${minute}`;
+  }
+
+  function toDisplayTime(value) {
+    const match = String(value || "").match(/^(\d{2}):(\d{2})$/);
+    if (!match) return "8:00 AM";
+    let hour = Number(match[1]);
+    const minute = match[2];
+    const meridiem = hour >= 12 ? "PM" : "AM";
+    hour %= 12;
+    if (hour === 0) hour = 12;
+    return `${hour}:${minute} ${meridiem}`;
+  }
+
+  function openReminderModal() {
+    setReminderDraft(displayTo24HourTime(app.reminderTime));
+    setIsReminderModalOpen(true);
+  }
+
+  function saveReminderTime() {
+    const nextDisplay = toDisplayTime(reminderDraft);
+    setAndPersist((prev) => ({ ...prev, reminderTime: nextDisplay }));
+    setIsReminderModalOpen(false);
+  }
+
+  const moodOptions = [
+    { value: "Calm", emoji: "😌" },
+    { value: "Centered", emoji: "🙂" },
+    { value: "Focused", emoji: "🎯" },
+    { value: "Energized", emoji: "⚡" },
+    { value: "Reflective", emoji: "🤔" },
+    { value: "Resilient", emoji: "🛡️" },
+    { value: "Anxious", emoji: "😰" },
+    { value: "Overwhelmed", emoji: "😵" },
+    { value: "Irritated", emoji: "😤" },
+    { value: "Discouraged", emoji: "😞" },
+    { value: "Uncertain", emoji: "😕" },
+    { value: "Drained", emoji: "🥱" }
+  ];
+
+  const normalizedTone = app.tone === "Balanced" ? "Centered" : app.tone;
+  const currentMood = moodOptions.find((option) => option.value === normalizedTone) || moodOptions[1];
+  const calendarNow = useMemo(() => new Date(), []);
+  const calendarYear = calendarNow.getFullYear();
+  const calendarMonth = calendarNow.getMonth();
+  const calendarMonthLabel = calendarNow.toLocaleDateString([], { month: "long", year: "numeric" });
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const firstWeekday = new Date(calendarYear, calendarMonth, 1).getDay();
+  const todayDateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(
+    calendarNow.getDate()
+  ).padStart(2, "0")}`;
+  const selectedDayLabel = selectedProgressDate
+    ? new Date(`${selectedProgressDate}T00:00:00`).toLocaleDateString([], {
+        month: "short",
+        day: "numeric"
+      })
+    : null;
+  const calendarCells = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  ];
+
+  const progressDiaryEntries = selectedProgressDate
+    ? app.diary.filter((entry) => {
+        const entryDate = new Date(entry.createdAt);
+        const entryKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}-${String(
+          entryDate.getDate()
+        ).padStart(2, "0")}`;
+        return entryKey === selectedProgressDate;
+      })
+    : app.diary;
 
   if (loading) {
     return <div className="p-10 text-center text-slate-600 dark:text-slate-300">Loading your resilience app...</div>;
@@ -424,34 +720,75 @@ export default function ResilienceApp() {
     <div className="min-h-screen bg-slate-100 p-4 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:p-8">
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[260px_1fr]">
         <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-slate-900 p-2 text-white">
-                <Shield className="h-5 w-5" />
-              </div>
-              <div>
-                <CardTitle>Unshaken</CardTitle>
-                <CardDescription>30-day resilience MVP</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-2"
-              onClick={() => setIsDarkMode((prev) => !prev)}
+          <CardContent className="space-y-3 pt-6">
+            <div
+              className="cursor-pointer rounded-3xl bg-slate-50 p-4 dark:bg-slate-800"
+              onClick={() => setIsFocusOpen((prev) => !prev)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setIsFocusOpen((prev) => !prev);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={isFocusOpen ? "Collapse current focus" : "Expand current focus"}
             >
-              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              {isDarkMode ? "Light mode" : "Dark mode"}
-            </Button>
-            <NavButton active={tab === "home"} icon={Home} label="Home" onClick={() => setTab("home")} />
-            <NavButton active={tab === "log"} icon={NotebookPen} label="Log" onClick={() => setTab("log")} />
-            <NavButton active={tab === "diary"} icon={BookOpen} label="Diary" onClick={() => setTab("diary")} />
-            <NavButton active={tab === "progress"} icon={LineChart} label="Progress" onClick={() => setTab("progress")} />
-            <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Current focus</p>
-              <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{weekFocus(app.day)}</p>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{weeklySummary}</p>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-2xl bg-slate-900 p-2 text-white dark:bg-slate-100 dark:text-slate-900">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle>Unshaken</CardTitle>
+                    <CardDescription>30-day Resilience</CardDescription>
+                  </div>
+                </div>
+                <div
+                  className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"
+                  aria-hidden="true"
+                >
+                  {isFocusOpen ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </div>
+              </div>
+              {isFocusOpen && (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Current focus</p>
+                  <>
+                    <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                      {weekFocus(currentProgramDay)}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{weeklySummary}</p>
+                    <Button
+                      variant="outline"
+                      className="mt-4 w-full justify-start gap-2"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsDarkMode((prev) => !prev);
+                      }}
+                    >
+                      {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                      {isDarkMode ? "Light mode" : "Dark mode"}
+                    </Button>
+                  </>
+                </div>
+              )}
+            </div>
+            <div className="-mx-2 overflow-x-auto pb-1 md:mx-0 md:overflow-visible md:pb-0">
+              <div className="flex gap-2 px-2 md:grid md:px-0">
+                <NavButton active={tab === "home"} icon={Home} label="Home" onClick={() => setTab("home")} />
+                <NavButton active={tab === "log"} icon={NotebookPen} label="Log" onClick={() => setTab("log")} />
+                <NavButton
+                  active={tab === "progress"}
+                  icon={LineChart}
+                  label={`Progress ${app.lastCompletedDay}/30`}
+                  onClick={() => setTab("progress")}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -459,167 +796,302 @@ export default function ResilienceApp() {
         <div className="space-y-6">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="grid gap-6">
             {tab === "home" && (
-              <Card>
-                <CardHeader>
-                  <SectionTitle
-                    icon={Sparkles}
-                    title={`Day ${Math.min(app.day, 30)} of 30`}
-                    subtitle="Train yourself to respond, not react."
-                  />
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Today’s scenario</p>
-                    <p className="mt-3 text-2xl font-semibold leading-snug text-slate-900 dark:text-slate-100">{todayScenario}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <Button onClick={startReflection}>
-                      Start reflection
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" onClick={() => setTab("log")}>
-                      Log real event
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="grid gap-6">
+                <Card>
+                  <CardHeader>
+                    <SectionTitle
+                      icon={Sparkles}
+                      title={`Day ${currentProgramDay} of 30`}
+                      subtitle="Train yourself to respond, not react."
+                    />
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">What could go wrong today</p>
+                        <div className="flex items-center gap-2">
+                          {dailyScenarioSource === "ai" && <AiBadgeIcon />}
+                          <Button
+                            variant="outline"
+                            className="px-3 py-1.5"
+                            onClick={() => void loadDailyScenario()}
+                            disabled={isRefreshingScenario}
+                            title="Refresh scenario"
+                            aria-label="Refresh scenario"
+                          >
+                            <RefreshCw className={`h-4 w-4 ${isRefreshingScenario ? "animate-spin" : ""}`} />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-2xl font-semibold leading-snug text-slate-900 dark:text-slate-100">{todayScenario}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Button onClick={startReflection}>
+                        Start reflection
+                        <ChevronRight className="ml-2 h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" onClick={() => setTab("log")}>
+                        Log real event
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {tab === "log" && (
-              <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
+              <div className="grid gap-6">
+                <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
+                  <Card>
+                    <CardHeader>
+                      <SectionTitle icon={NotebookPen} title="Log what happened" subtitle="Write it and get guided." />
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Textarea
+                        value={eventText}
+                        onChange={(e) => setEventText(e.target.value)}
+                        placeholder="My friend canceled and now I feel rejected."
+                        className="min-h-[180px]"
+                      />
+                      <Button onClick={analyzeEvent} disabled={!eventText.trim() || isAnalyzing}>
+                        {isAnalyzing ? "Analyzing..." : "Analyze entry"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Trigger result</CardTitle>
+                      <CardDescription>The app picks the right steps.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {analysis ? (
+                        <div className="space-y-4">
+                          <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
+                            <p className="text-sm text-slate-500 dark:text-slate-400">Triggered steps</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {analysis.step1 && <Badge>Step 1: Facts vs Story</Badge>}
+                              {analysis.step2 && <Badge>Step 2: Control Filter</Badge>}
+                              {analysis.step3 && <Badge>Step 3: Chosen Response</Badge>}
+                            </div>
+                          </div>
+                          <Textarea
+                            value={eventForm.fact}
+                            onChange={(e) => setEventForm((prev) => ({ ...prev, fact: e.target.value }))}
+                            placeholder="Facts"
+                          />
+                          <Textarea
+                            value={eventForm.story}
+                            onChange={(e) => setEventForm((prev) => ({ ...prev, story: e.target.value }))}
+                            placeholder="Story"
+                          />
+                          <Textarea
+                            value={eventForm.outsideControl}
+                            onChange={(e) => setEventForm((prev) => ({ ...prev, outsideControl: e.target.value }))}
+                            placeholder="Outside your control"
+                          />
+                          <Textarea
+                            value={eventForm.insideControl}
+                            onChange={(e) => setEventForm((prev) => ({ ...prev, insideControl: e.target.value }))}
+                            placeholder="Inside your control"
+                          />
+                          <Textarea
+                            value={eventForm.chosenResponse}
+                            onChange={(e) => setEventForm((prev) => ({ ...prev, chosenResponse: e.target.value }))}
+                            placeholder="Chosen response"
+                          />
+                          <Textarea
+                            value={eventForm.lesson}
+                            onChange={(e) => setEventForm((prev) => ({ ...prev, lesson: e.target.value }))}
+                            placeholder="Lesson"
+                          />
+                          <div className="grid grid-cols-2 gap-3">
+                            <Input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={eventForm.moodBefore}
+                              onChange={(e) => setEventForm((prev) => ({ ...prev, moodBefore: e.target.value }))}
+                            />
+                            <Input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={eventForm.moodAfter}
+                              onChange={(e) => setEventForm((prev) => ({ ...prev, moodAfter: e.target.value }))}
+                            />
+                          </div>
+                          <Button className="w-full" onClick={saveEventEntry}>
+                            Save to diary
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="rounded-3xl bg-slate-50 p-5 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          Analyze an entry to trigger guided prompts.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
                 <Card>
                   <CardHeader>
-                    <SectionTitle icon={NotebookPen} title="Log what happened" subtitle="Write it and get guided." />
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Textarea
-                      value={eventText}
-                      onChange={(e) => setEventText(e.target.value)}
-                      placeholder="My friend canceled and now I feel rejected."
-                      className="min-h-[180px]"
-                    />
-                    <Button onClick={analyzeEvent} disabled={!eventText.trim()}>
-                      Analyze entry
-                    </Button>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Trigger result</CardTitle>
-                    <CardDescription>The app picks the right steps.</CardDescription>
+                    <SectionTitle icon={BookOpen} title="Diary" subtitle="Your logged events in one place." />
                   </CardHeader>
                   <CardContent>
-                    {analysis ? (
-                      <div className="space-y-4">
-                        <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
-                          <p className="text-sm text-slate-500 dark:text-slate-400">Triggered steps</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {analysis.step1 && <Badge>Step 1: Facts vs Story</Badge>}
-                            {analysis.step2 && <Badge>Step 2: Control Filter</Badge>}
-                            {analysis.step3 && <Badge>Step 3: Chosen Response</Badge>}
-                          </div>
-                        </div>
-                        <Textarea
-                          value={eventForm.fact}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, fact: e.target.value }))}
-                          placeholder="Facts"
-                        />
-                        <Textarea
-                          value={eventForm.story}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, story: e.target.value }))}
-                          placeholder="Story"
-                        />
-                        <Textarea
-                          value={eventForm.outsideControl}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, outsideControl: e.target.value }))}
-                          placeholder="Outside your control"
-                        />
-                        <Textarea
-                          value={eventForm.insideControl}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, insideControl: e.target.value }))}
-                          placeholder="Inside your control"
-                        />
-                        <Textarea
-                          value={eventForm.chosenResponse}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, chosenResponse: e.target.value }))}
-                          placeholder="Chosen response"
-                        />
-                        <Input
-                          value={eventForm.lesson}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, lesson: e.target.value }))}
-                          placeholder="Lesson"
-                        />
-                        <div className="grid grid-cols-2 gap-3">
-                          <Input
-                            type="number"
-                            min={1}
-                            max={10}
-                            value={eventForm.moodBefore}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, moodBefore: e.target.value }))}
-                          />
-                          <Input
-                            type="number"
-                            min={1}
-                            max={10}
-                            value={eventForm.moodAfter}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, moodAfter: e.target.value }))}
-                          />
-                        </div>
-                        <Button className="w-full" onClick={saveEventEntry}>
-                          Save to diary
-                        </Button>
+                    {app.diary.length === 0 ? (
+                      <div className="rounded-3xl bg-slate-50 p-8 text-center text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        No diary entries yet.
                       </div>
                     ) : (
-                      <p className="rounded-3xl bg-slate-50 p-5 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        Analyze an entry to trigger guided prompts.
-                      </p>
+                      <div className="grid gap-4">
+                        {app.diary.map((entry) => (
+                          <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                              {new Date(entry.createdAt).toLocaleDateString()}
+                            </p>
+                            {entry.scenario && (
+                              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
+                            )}
+                            {entry.moodBefore !== null && entry.moodAfter !== null && (
+                              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                                Mood {entry.moodBefore} to {entry.moodAfter}
+                              </p>
+                            )}
+                            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
               </div>
             )}
 
-            {tab === "diary" && (
-              <Card>
-                <CardHeader>
-                  <SectionTitle icon={BookOpen} title="Diary" subtitle="Your events and reflections." />
-                </CardHeader>
-                <CardContent>
-                  {app.diary.length === 0 ? (
-                    <div className="rounded-3xl bg-slate-50 p-8 text-center text-slate-500 dark:bg-slate-800 dark:text-slate-400">No diary entries yet.</div>
-                  ) : (
-                    <div className="grid gap-4">
-                      {app.diary.map((entry) => (
-                        <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {new Date(entry.createdAt).toLocaleDateString()} - Mood {entry.moodBefore} to {entry.moodAfter}
-                          </p>
-                          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
             {tab === "progress" && (
-              <div className="grid gap-6 lg:grid-cols-2">
+              <div className="grid gap-6">
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader>
+                      <SectionTitle icon={LineChart} title="Progress" subtitle="How your patterns are moving." />
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+                        <span>{app.lastCompletedDay}/30 days complete</span>
+                        <span>{completionPercent}%</span>
+                      </div>
+                      <Progress value={completionPercent} />
+                      <div className="space-y-2 pt-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                            {calendarMonthLabel}
+                          </p>
+                          {selectedProgressDate && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProgressDate(null)}
+                              className="text-xs text-slate-600 underline dark:text-slate-300"
+                            >
+                              Show all dates
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
+                          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((weekday) => (
+                            <div
+                              key={weekday}
+                              className="pb-1 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400"
+                            >
+                              {weekday}
+                            </div>
+                          ))}
+                          {calendarCells.map((dayNumber, index) => {
+                            if (!dayNumber) {
+                              return <div key={`blank-${index}`} className="h-8" />;
+                            }
+                            const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(
+                              dayNumber
+                            ).padStart(2, "0")}`;
+                            const isSelected = selectedProgressDate === dateKey;
+                            const isToday = dateKey === todayDateKey;
+                            const hasEntries = app.diary.some((entry) => {
+                              const entryDate = new Date(entry.createdAt);
+                              const entryKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(
+                                2,
+                                "0"
+                              )}-${String(entryDate.getDate()).padStart(2, "0")}`;
+                              return entryKey === dateKey;
+                            });
+
+                            return (
+                              <button
+                                key={dateKey}
+                                type="button"
+                                onClick={() => setSelectedProgressDate(dateKey)}
+                                className={`h-8 rounded-lg border text-xs transition ${
+                                  isSelected
+                                    ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                                    : isToday
+                                      ? "border-emerald-500 bg-emerald-100 text-emerald-900 dark:border-emerald-400 dark:bg-emerald-900/40 dark:text-emerald-100"
+                                      : hasEntries
+                                        ? "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                                        : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                }`}
+                              >
+                                {dayNumber}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">Entries: {diaryStats.total}</p>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">Most triggered: {diaryStats.topStep}</p>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">Average mood shift: {diaryStats.averageShift}</p>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">Most common story: {diaryStats.topStory}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
                 <Card>
                   <CardHeader>
-                    <SectionTitle icon={LineChart} title="Progress" subtitle="How your patterns are moving." />
+                    <SectionTitle
+                      icon={BookOpen}
+                      title="Diary"
+                      subtitle={
+                        selectedProgressDate
+                          ? `Showing entries for ${selectedDayLabel}`
+                          : "Your logged events in one place."
+                      }
+                    />
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-                      <span>{app.lastCompletedDay}/30 days complete</span>
-                      <span>{completionPercent}%</span>
-                    </div>
-                    <Progress value={completionPercent} />
-                    <p className="text-sm text-slate-700 dark:text-slate-300">Entries: {diaryStats.total}</p>
-                    <p className="text-sm text-slate-700 dark:text-slate-300">Most triggered: {diaryStats.topStep}</p>
-                    <p className="text-sm text-slate-700 dark:text-slate-300">Average mood shift: {diaryStats.averageShift}</p>
-                    <p className="text-sm text-slate-700 dark:text-slate-300">Most common story: {diaryStats.topStory}</p>
+                  <CardContent>
+                    {progressDiaryEntries.length === 0 ? (
+                      <div className="rounded-3xl bg-slate-50 p-8 text-center text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        {selectedProgressDate
+                          ? `No diary entries yet for ${selectedDayLabel}.`
+                          : "No diary entries yet."}
+                      </div>
+                    ) : (
+                      <div className="grid gap-4">
+                        {progressDiaryEntries.map((entry) => (
+                          <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                              {new Date(entry.createdAt).toLocaleDateString()}
+                            </p>
+                            {entry.scenario && (
+                              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
+                            )}
+                            {entry.moodBefore !== null && entry.moodAfter !== null && (
+                              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                                Mood {entry.moodBefore} to {entry.moodAfter}
+                              </p>
+                            )}
+                            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -635,11 +1107,51 @@ export default function ResilienceApp() {
               <SectionTitle icon={Brain} title="Morning reflection" subtitle="Practice before the moment happens." />
             </CardHeader>
             <CardContent className="space-y-4">
-              <Textarea
-                value={reflection.reaction}
-                onChange={(e) => setReflection((prev) => ({ ...prev, reaction: e.target.value }))}
-                placeholder="What reaction usually comes first?"
-              />
+              <div className="rounded-3xl p-1">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                  What could go wrong today
+                </p>
+                <p className="mt-2 text-base font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                  {todayScenario}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-700 dark:bg-emerald-950/40">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                    What reaction usually comes first?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setReflection((prev) => ({ ...prev, reaction: "" }))}
+                    disabled={!reflection.reaction}
+                    className="rounded-md px-2 py-0.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-200 dark:hover:bg-emerald-900/60"
+                    aria-label="Clear reaction field"
+                    title="Clear"
+                  >
+                    X
+                  </button>
+                </div>
+                <Textarea
+                  value={reflection.reaction}
+                  onChange={(e) => setReflection((prev) => ({ ...prev, reaction: e.target.value }))}
+                  placeholder="Type your first reaction..."
+                  className="border-emerald-400 bg-emerald-200/90 placeholder:text-emerald-800 dark:border-emerald-500 dark:bg-emerald-600/30 dark:placeholder:text-emerald-200"
+                />
+                {reflection.reaction.trim() && (
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => prefillReflectionFromReaction(reflection.reaction)}
+                      disabled={isPrefillingReflection}
+                    >
+                      {isPrefillingReflection ? "Generating..." : "Done"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {isPrefillingReflection && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">AI is prefilling the rest...</p>
+              )}
               <Textarea
                 value={reflection.facts}
                 onChange={(e) => setReflection((prev) => ({ ...prev, facts: e.target.value }))}
@@ -665,7 +1177,7 @@ export default function ResilienceApp() {
                 onChange={(e) => setReflection((prev) => ({ ...prev, chosenResponse: e.target.value }))}
                 placeholder="Chosen response"
               />
-              <Input
+              <Textarea
                 value={reflection.intention}
                 onChange={(e) => setReflection((prev) => ({ ...prev, intention: e.target.value }))}
                 placeholder="Daily intention"
@@ -685,12 +1197,86 @@ export default function ResilienceApp() {
       )}
 
       <div className="mx-auto mt-6 flex max-w-7xl items-center justify-between rounded-3xl bg-white px-5 py-4 text-sm text-slate-500 shadow-sm dark:border dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={openReminderModal}
+          className="flex items-center gap-2 rounded-lg px-2 py-1 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
           <Calendar className="h-4 w-4" />
           <span>Reminder {app.reminderTime}</span>
-        </div>
-        <span>{saving ? "Saving..." : `Tone: ${app.tone}`}</span>
+        </button>
+        {saving ? (
+          <span>Saving...</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsMoodModalOpen(true)}
+            className="rounded-lg px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            Mood: {currentMood.value} {currentMood.emoji}
+          </button>
+        )}
       </div>
+
+      {isReminderModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <Card className="w-full max-w-sm">
+            <CardHeader>
+              <CardTitle>Edit reminder time</CardTitle>
+              <CardDescription>Choose when you want to be reminded daily.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Input
+                type="time"
+                value={reminderDraft}
+                onChange={(e) => setReminderDraft(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsReminderModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={saveReminderTime}>Save</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {isMoodModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <Card className="w-full max-w-sm">
+            <CardHeader>
+              <CardTitle>Choose current mood</CardTitle>
+              <CardDescription>This tunes your state label for today.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {moodOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2 text-left text-sm transition ${
+                    app.tone === option.value
+                      ? "border-slate-900 bg-slate-100 text-slate-900 dark:border-slate-200 dark:bg-slate-700 dark:text-slate-100"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                  onClick={() => {
+                    setAndPersist((prev) => ({ ...prev, tone: option.value }));
+                    setIsMoodModalOpen(false);
+                  }}
+                >
+                  <span>{option.value}</span>
+                  <span>{option.emoji}</span>
+                </button>
+              ))}
+              <div className="flex justify-end pt-2">
+                <Button variant="outline" onClick={() => setIsMoodModalOpen(false)}>
+                  Close
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
