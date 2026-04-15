@@ -220,46 +220,23 @@ function Button({ className = "", variant = "default", children, ...props }) {
     </button>
   );
 }
-function Input({ className = "", onFocus, onBlur, onChange, value, clearable = true, ...props }) {
-  const [isFocused, setIsFocused] = useState(false);
-  const hasValue = String(value ?? "").length > 0;
-
+function Input({ className = "", onFocus, onBlur, onChange, value, ...props }) {
   return (
-    <div className="relative min-w-0 max-w-full">
+    <div className="min-w-0 max-w-full">
       <input
         {...props}
         value={value}
         onChange={onChange}
-        onFocus={(event) => {
-          setIsFocused(true);
-          if (onFocus) onFocus(event);
-        }}
-        onBlur={(event) => {
-          setIsFocused(false);
-          if (onBlur) onBlur(event);
-        }}
-        className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
-          clearable ? "pr-8" : ""
-        } ${className}`}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
       />
-      {clearable && isFocused && hasValue ? (
-        <button
-          type="button"
-          className="absolute right-2 top-[calc(50%-2px)] inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-xs leading-none text-slate-500 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onChange?.({ target: { value: "" } })}
-          aria-label="Clear input"
-        >
-          x
-        </button>
-      ) : null}
     </div>
   );
 }
-function Textarea({ className = "", onInput, onFocus, onBlur, onChange, value, clearable = true, ...props }) {
+
+function Textarea({ className = "", onInput, onFocus, onBlur, onChange, value, ...props }) {
   const textareaRef = useRef(null);
-  const [isFocused, setIsFocused] = useState(false);
-  const hasValue = String(value ?? "").length > 0;
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -269,41 +246,22 @@ function Textarea({ className = "", onInput, onFocus, onBlur, onChange, value, c
   }, [value]);
 
   return (
-    <div className="relative min-w-0 max-w-full">
+    <div className="min-w-0 max-w-full">
       <textarea
         {...props}
         ref={textareaRef}
         rows={1}
         value={value}
         onChange={onChange}
-        onFocus={(event) => {
-          setIsFocused(true);
-          if (onFocus) onFocus(event);
-        }}
-        onBlur={(event) => {
-          setIsFocused(false);
-          if (onBlur) onBlur(event);
-        }}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onInput={(event) => {
           event.currentTarget.style.height = "auto";
           event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
           if (onInput) onInput(event);
         }}
-        className={`w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
-          clearable ? "pr-8" : ""
-        } ${className}`}
+        className={`w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
       />
-      {clearable && isFocused && hasValue ? (
-        <button
-          type="button"
-          className="absolute right-2 top-[calc(50%-2px)] inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-xs leading-none text-slate-500 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onChange?.({ target: { value: "" } })}
-          aria-label="Clear text"
-        >
-          x
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -1176,40 +1134,47 @@ export default function ResilienceApp() {
                       Used to make "What could go wrong today" more specific to your real life.
                     </p>
                     <div className="mt-3 grid gap-2">
-                      <Input
+                      <Textarea
                         value={profileDraft.age}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, age: event.target.value }))}
                         placeholder="Age"
+                        className="min-h-[2.75rem]"
                       />
-                      <Input
+                      <Textarea
                         value={profileDraft.maritalStatus}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, maritalStatus: event.target.value }))}
                         placeholder="Marital status"
+                        className="min-h-[2.75rem]"
                       />
-                      <Input
+                      <Textarea
                         value={profileDraft.children}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, children: event.target.value }))}
                         placeholder="Children (e.g., 2 kids, no children)"
+                        className="min-h-[2.75rem]"
                       />
-                      <Input
+                      <Textarea
                         value={profileDraft.dog}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, dog: event.target.value }))}
                         placeholder="Dog or pets"
+                        className="min-h-[2.75rem]"
                       />
-                      <Input
+                      <Textarea
                         value={profileDraft.partner}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, partner: event.target.value }))}
                         placeholder="Girlfriend/partner"
+                        className="min-h-[2.75rem]"
                       />
-                      <Input
+                      <Textarea
                         value={profileDraft.job}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, job: event.target.value }))}
                         placeholder="Job"
+                        className="min-h-[2.75rem]"
                       />
-                      <Input
+                      <Textarea
                         value={profileDraft.friends}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, friends: event.target.value }))}
                         placeholder="Friends/social context"
+                        className="min-h-[2.75rem]"
                       />
                       <Textarea
                         value={profileDraft.notes}
