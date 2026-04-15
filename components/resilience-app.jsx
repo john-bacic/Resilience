@@ -806,11 +806,10 @@ export default function ResilienceApp() {
                     />
                   </CardHeader>
                   <CardContent className="space-y-5">
-                    <div className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                    <div className="relative rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">What could go wrong today</p>
                         <div className="flex items-center gap-2">
-                          {dailyScenarioSource === "ai" && <AiBadgeIcon />}
                           <Button
                             variant="outline"
                             className="px-3 py-1.5"
@@ -823,7 +822,14 @@ export default function ResilienceApp() {
                           </Button>
                         </div>
                       </div>
-                      <p className="mt-3 text-2xl font-semibold leading-snug text-slate-900 dark:text-slate-100">{todayScenario}</p>
+                      <p className="mt-3 pr-8 text-2xl font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                        {todayScenario}
+                      </p>
+                      {dailyScenarioSource === "ai" && (
+                        <div className="pointer-events-none absolute bottom-3 right-3">
+                          <AiBadgeIcon />
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-3">
                       <Button onClick={startReflection}>
