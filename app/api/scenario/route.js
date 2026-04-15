@@ -35,10 +35,32 @@ function fallbackForDay(day) {
   return FALLBACK_SCENARIOS[(day - 1) % FALLBACK_SCENARIOS.length];
 }
 
+const STYLE_VARIANTS = [
+  { style: "social friction", category: "social" },
+  { style: "family conflict", category: "family" },
+  { style: "parent or relative emergency", category: "family" },
+  { style: "financial stress", category: "financial" },
+  { style: "health scare", category: "health" },
+  { style: "neighborhood safety concern", category: "community" },
+  { style: "government or legal bureaucracy issue", category: "civic" },
+  { style: "public transit or infrastructure failure", category: "infrastructure" },
+  { style: "weather or environment disruption", category: "environment" },
+  { style: "logistical chaos", category: "logistics" },
+  { style: "relationship ambiguity", category: "social" },
+  { style: "self-doubt moment", category: "internal" },
+  { style: "public awkwardness", category: "social" },
+  { style: "ridiculous-but-stressful mishap", category: "absurd" },
+  { style: "darkly funny inconvenience spiral", category: "absurd" },
+  { style: "time-pressure conflict", category: "work" },
+  { style: "miscommunication tension", category: "social" },
+  { style: "work pressure", category: "work" }
+];
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const day = Math.max(1, Number(searchParams.get("day")) || 1);
   const avoid = String(searchParams.get("avoid") || "").trim();
+  const avoidCategory = String(searchParams.get("avoidCategory") || "").trim().toLowerCase();
   const fallback = fallbackForDay(day);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -47,17 +69,15 @@ export async function GET(request) {
   }
 
   try {
-    const styleVariants = [
-      "social friction",
-      "work pressure",
-      "logistical chaos",
-      "relationship ambiguity",
-      "self-doubt moment",
-      "public awkwardness",
-      "time-pressure conflict",
-      "miscommunication tension"
-    ];
-    const style = styleVariants[Math.floor(Math.random() * styleVariants.length)];
+    const weightedPool = STYLE_VARIANTS.flatMap((variant) => {
+      const weight = variant.category === "work" ? 1 : 3;
+      return Array.from({ length: weight }, () => variant);
+    });
+    const allowedPool = weightedPool.filter((variant) => variant.category !== avoidCategory);
+    const finalPool = allowedPool.length > 0 ? allowedPool : weightedPool;
+    const picked = finalPool[Math.floor(Math.random() * finalPool.length)];
+    const style = picked.style;
+    const pickedCategory = picked.category;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -71,7 +91,7 @@ export async function GET(request) {
         max_tokens: 80,
         temperature: 1,
         system:
-          "You create short, realistic, non-catastrophic negative scenarios for resilience training. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
+          "You create short negative scenarios for resilience training. Scenario intensity can range from everyday stress to serious disruption, including personal, family, civic, and environmental situations. Occasionally include absurd, darkly funny, or ridiculous mishaps, but still make them emotionally inconvenient/negative and believable enough to reflect on. Avoid graphic violence or gore. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
         messages: [
           {
             role: "user",
@@ -80,6 +100,8 @@ Style: ${style}.
 Keep it under 18 words.
 Make it concrete and vivid, not generic.
 Use clear future tense only.
+Not always work-related; rotate among personal life, parents/relatives, community/government systems, and broader life disruptions.
+Sometimes make it weirdly funny or ridiculous, but still clearly negative.
 ${avoid ? `Do NOT repeat or paraphrase this scenario: "${avoid}".` : ""}
 Return one sentence only.`
           }
@@ -100,14 +122,18 @@ Return one sentence only.`
     }
 
     if (avoid && scenario.toLowerCase() === avoid.toLowerCase()) {
-      return Response.json({ scenario: fallbackForDay(day + 1), source: "fallback" });
+      return Response.json({
+        scenario: fallbackForDay(day + 1),
+        source: "fallback",
+        category: "fallback"
+      });
     }
 
     const normalizedScenario = /\bwill\b/i.test(scenario) ? scenario : `You will ${scenario.charAt(0).toLowerCase()}${scenario.slice(1)}`;
 
-    return Response.json({ scenario: normalizedScenario, source: "ai" });
+    return Response.json({ scenario: normalizedScenario, source: "ai", category: pickedCategory });
   } catch (error) {
     console.error(error);
-    return Response.json({ scenario: fallback, source: "fallback" });
+    return Response.json({ scenario: fallback, source: "fallback", category: "fallback" });
   }
 }

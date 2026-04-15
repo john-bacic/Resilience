@@ -67,7 +67,7 @@ async function generateReflection({
       max_tokens: 700,
       temperature,
       system:
-        "You are a high-quality resilience journaling coach. Return strict JSON only with keys: facts, story, outsideControl, insideControl, chosenResponse, intention. Use first-person voice. Make each field specific to the scenario and reaction, concrete, and psychologically sharp. Avoid generic self-help cliches and repeated phrases.",
+        "You are a high-quality resilience journaling coach. Return strict JSON only with keys: facts, story, outsideControl, insideControl, chosenResponse, intention. Use first-person voice. Make each field specific to the scenario and reaction, concrete, and psychologically sharp. Avoid generic self-help cliches and repeated phrases. The intention must be fresh, memorable, and creative (metaphor/imagery welcome) while still practical.",
       messages: [
         {
           role: "user",
@@ -82,7 +82,7 @@ Rules:
 - outsideControl: specific elements I cannot control.
 - insideControl: specific controllable actions/choices.
 - chosenResponse: one realistic behavior I will do next.
-- intention: one short personal mantra for today.
+- intention: one short personal mantra for today that is creative and specific (not generic).
 - Keep each field distinct; do not repeat wording across fields.
 - Use vivid language and avoid bland phrases.
 ${avoidText ? `Avoid repeating these phrases: ${avoidText}` : ""}

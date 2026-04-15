@@ -293,6 +293,7 @@ export default function ResilienceApp() {
   const [isFocusOpen, setIsFocusOpen] = useState(true);
   const [dailyScenario, setDailyScenario] = useState("");
   const [dailyScenarioSource, setDailyScenarioSource] = useState("fallback");
+  const [dailyScenarioCategory, setDailyScenarioCategory] = useState("");
   const [isRefreshingScenario, setIsRefreshingScenario] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [isMoodModalOpen, setIsMoodModalOpen] = useState(false);
@@ -394,12 +395,16 @@ export default function ResilienceApp() {
       if (dailyScenario) {
         params.set("avoid", dailyScenario);
       }
+      if (dailyScenarioCategory) {
+        params.set("avoidCategory", dailyScenarioCategory);
+      }
       const response = await fetch(`/api/scenario?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) return;
       const payload = await response.json();
       if (payload?.scenario) {
         setDailyScenario(payload.scenario);
         setDailyScenarioSource(payload.source || "fallback");
+        setDailyScenarioCategory(payload.category || "");
       }
     } catch (error) {
       console.error(error);
