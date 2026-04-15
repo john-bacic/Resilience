@@ -330,6 +330,7 @@ export default function ResilienceApp() {
   const [notificationPermission, setNotificationPermission] = useState("default");
   const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [reflectionOpen, setReflectionOpen] = useState(false);
+  const [reflectionScenario, setReflectionScenario] = useState("");
   const [reflection, setReflection] = useState({
     reaction: "",
     facts: "",
@@ -630,6 +631,7 @@ export default function ResilienceApp() {
   }, [currentProgramDay]);
 
   function startReflection() {
+    setReflectionScenario(todayScenario);
     setReflection({
       reaction: "",
       facts: "",
@@ -653,7 +655,7 @@ export default function ResilienceApp() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             reaction: trimmed,
-            scenario: todayScenario
+            scenario: reflectionScenario || todayScenario
           })
         });
         if (!response.ok) return;
@@ -681,19 +683,20 @@ export default function ResilienceApp() {
   }
 
   function saveReflection() {
+    const scenarioText = (reflectionScenario || todayScenario || "").trim();
     const entry = {
       id: getRandomId(),
       day: currentProgramDay,
-      scenario: todayScenario,
+      scenario: scenarioText,
       ...reflection,
       createdAt: new Date().toISOString()
     };
     const diaryEntryFromReflection = {
       id: getRandomId(),
       day: currentProgramDay,
-      title: `Morning reflection: ${todayScenario.slice(0, 45)}`,
+      title: `Morning reflection: ${scenarioText.slice(0, 45)}`,
       rawText: reflection.reaction || "",
-      scenario: todayScenario,
+      scenario: scenarioText,
       source: "morning_reflection",
       triggeredSteps: [],
       fact: reflection.facts || "",
@@ -1420,9 +1423,11 @@ export default function ResilienceApp() {
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   What could go wrong today
                 </p>
-                <p className="mt-2 text-base font-semibold leading-snug text-slate-900 dark:text-slate-100">
-                  {todayScenario}
-                </p>
+                <Textarea
+                  value={reflectionScenario}
+                  onChange={(e) => setReflectionScenario(e.target.value)}
+                  className="mt-2 min-h-[84px] rounded-2xl border-emerald-300 bg-emerald-50 font-semibold leading-snug text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
               </div>
               <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-700 dark:bg-emerald-950/40">
                 <div className="mb-2 flex items-center justify-between">
@@ -1444,7 +1449,7 @@ export default function ResilienceApp() {
                   value={reflection.reaction}
                   onChange={(e) => setReflection((prev) => ({ ...prev, reaction: e.target.value }))}
                   placeholder="Type your first reaction..."
-                  className="border-emerald-400 bg-emerald-200/90 placeholder:text-emerald-800 dark:border-emerald-500 dark:bg-emerald-600/30 dark:placeholder:text-emerald-200"
+                  className="reaction-border-loop border-emerald-500 bg-emerald-200/95 text-slate-900 placeholder:text-emerald-900 focus:ring-0 dark:border-emerald-400 dark:bg-emerald-500/25 dark:text-emerald-50 dark:placeholder:text-emerald-200"
                 />
                 {reflection.reaction.trim() && (
                   <div className="mt-2 flex justify-end">
