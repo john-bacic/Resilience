@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen,
+  Bell,
   Brain,
   Calendar,
   CheckCircle2,
@@ -92,6 +93,17 @@ function programDayFromStart(startDateKey) {
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const diffDays = Math.floor((todayStart - start) / 86400000) + 1;
   return Math.max(1, Math.min(30, diffDays));
+}
+
+function base64UrlToUint8Array(base64UrlString) {
+  const padding = "=".repeat((4 - (base64UrlString.length % 4)) % 4);
+  const base64 = (base64UrlString + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 function clampMood(value) {
@@ -312,6 +324,11 @@ export default function ResilienceApp() {
   });
   const [lastDeletedDiaryEntry, setLastDeletedDiaryEntry] = useState(null);
   const deleteUndoTimerRef = useRef(null);
+  const [latestCommit, setLatestCommit] = useState(null);
+  const [latestCommitUrl, setLatestCommitUrl] = useState("");
+  const [isClient, setIsClient] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState("default");
+  const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflection, setReflection] = useState({
     reaction: "",
@@ -336,6 +353,18 @@ export default function ResilienceApp() {
     moodAfter: 6
   });
 
+  async function refreshVersionInfo() {
+    try {
+      const response = await fetch("/api/version", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      setLatestCommit(payload?.commit || null);
+      setLatestCommitUrl(payload?.url || "");
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   async function persistState(nextState) {
     try {
       setSaving(true);
@@ -345,6 +374,7 @@ export default function ResilienceApp() {
         body: JSON.stringify({ state: nextState })
       });
       if (!response.ok) throw new Error("Failed to save");
+      void refreshVersionInfo();
     } catch (error) {
       console.error(error);
     } finally {
@@ -360,6 +390,87 @@ export default function ResilienceApp() {
     });
   }
 
+  async function syncPushSubscription() {
+    try {
+      if (typeof window === "undefined") return;
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+      if (Notification.permission !== "granted") {
+        setIsPushEnabled(false);
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      const existingSubscription = await registration.pushManager.getSubscription();
+      setIsPushEnabled(Boolean(existingSubscription));
+      if (existingSubscription) {
+        await fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: existingSubscription.toJSON() })
+        });
+      }
+    } catch (error) {
+      console.error("syncPushSubscription failed", error);
+    }
+  }
+
+  async function enablePushNotifications() {
+    try {
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission !== "granted") return;
+
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!publicKey) {
+        console.error("Missing NEXT_PUBLIC_VAPID_PUBLIC_KEY");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      const subscription =
+        (await registration.pushManager.getSubscription()) ||
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlToUint8Array(publicKey)
+        }));
+
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: subscription.toJSON() })
+      });
+
+      setIsPushEnabled(true);
+    } catch (error) {
+      console.error("enablePushNotifications failed", error);
+      setIsPushEnabled(false);
+    }
+  }
+
+  async function disablePushNotifications() {
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        setIsPushEnabled(false);
+        return;
+      }
+      const endpoint = subscription.endpoint;
+      await subscription.unsubscribe();
+      await fetch("/api/push/subscribe", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint })
+      });
+      setIsPushEnabled(false);
+    } catch (error) {
+      console.error("disablePushNotifications failed", error);
+    }
+  }
+
   useEffect(() => {
     const storedTheme = localStorage.getItem("resilience-theme");
     setIsDarkMode(storedTheme ? storedTheme === "dark" : true);
@@ -373,6 +484,49 @@ export default function ResilienceApp() {
     document.documentElement.classList.toggle("dark", isDarkMode);
     localStorage.setItem("resilience-theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsClient(true);
+    if ("Notification" in window) {
+      setNotificationPermission(Notification.permission);
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then(() => syncPushSubscription())
+        .catch((error) => console.error("Service worker registration failed", error));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window)) return;
+    if (notificationPermission !== "granted") return;
+
+    const reminderAs24 = displayTo24HourTime(app.reminderTime);
+    const [targetHour, targetMinute] = reminderAs24.split(":").map(Number);
+    const key = `resilience-foreground-reminder-${toDateKey(new Date())}`;
+
+    const maybeNotify = () => {
+      try {
+        const now = new Date();
+        if (now.getHours() === targetHour && now.getMinutes() === targetMinute) {
+          if (localStorage.getItem(key) === "shown") return;
+          new Notification("Unshaken reminder", {
+            body: "Quick check-in: do your morning reflection before the day runs away."
+          });
+          localStorage.setItem(key, "shown");
+        }
+      } catch (error) {
+        console.error("foreground reminder failed", error);
+      }
+    };
+
+    maybeNotify();
+    const intervalId = setInterval(maybeNotify, 30000);
+    return () => clearInterval(intervalId);
+  }, [app.reminderTime, notificationPermission]);
 
   useEffect(() => {
     localStorage.setItem("resilience-focus-open", String(isFocusOpen));
@@ -727,6 +881,24 @@ export default function ResilienceApp() {
       if (deleteUndoTimerRef.current) {
         clearTimeout(deleteUndoTimerRef.current);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const guardedRefresh = async () => {
+      if (cancelled) return;
+      await refreshVersionInfo();
+    };
+
+    void guardedRefresh();
+    const intervalId = setInterval(() => {
+      void guardedRefresh();
+    }, 60000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
     };
   }, []);
 
@@ -1342,6 +1514,24 @@ export default function ResilienceApp() {
           <Calendar className="h-4 w-4" />
           <span>Reminder {app.reminderTime}</span>
         </button>
+        {isClient && "Notification" in window ? (
+          <button
+            type="button"
+            onClick={isPushEnabled ? disablePushNotifications : enablePushNotifications}
+            className="flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <Bell className="h-4 w-4" />
+            <span>
+              {isPushEnabled
+                ? "Push on"
+                : notificationPermission === "denied"
+                  ? "Push blocked"
+                  : "Enable push"}
+            </span>
+          </button>
+        ) : (
+          <span className="text-xs text-slate-400 dark:text-slate-500">Browser notifications unavailable</span>
+        )}
         {saving ? (
           <span>Saving...</span>
         ) : (
@@ -1352,6 +1542,24 @@ export default function ResilienceApp() {
           >
             Mood: {currentMood.value} {currentMood.emoji}
           </button>
+        )}
+      </div>
+      <div className="mx-auto mt-2 max-w-7xl text-center text-xs text-slate-400 dark:text-slate-500">
+        {latestCommit ? (
+          latestCommitUrl ? (
+            <a
+              href={latestCommitUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="transition hover:text-slate-500 dark:hover:text-slate-400"
+            >
+              Build commit: {latestCommit}
+            </a>
+          ) : (
+            <span>Build commit: {latestCommit}</span>
+          )
+        ) : (
+          <span>Build commit: --</span>
         )}
       </div>
 
