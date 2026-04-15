@@ -91,7 +91,7 @@ export async function GET(request) {
         max_tokens: 80,
         temperature: 1,
         system:
-          "You create short negative scenarios for resilience training. Scenario intensity can range from everyday stress to serious disruption, including personal, family, civic, and environmental situations. Occasionally include absurd, darkly funny, or ridiculous mishaps, but still make them emotionally inconvenient/negative and believable enough to reflect on. Avoid graphic violence or gore. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
+          "You write short negative scenarios for resilience training in casual everyday language. Scenario intensity can range from everyday stress to serious disruption, including personal, family, civic, and environmental situations. Occasionally include absurd, darkly funny, or ridiculous mishaps, but still make them emotionally inconvenient/negative and believable enough to reflect on. Avoid graphic violence or gore. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
         messages: [
           {
             role: "user",
@@ -100,6 +100,7 @@ Style: ${style}.
 Keep it under 18 words.
 Make it concrete and vivid, not generic.
 Use clear future tense only.
+Use informal, conversational wording (not formal or clinical).
 Not always work-related; rotate among personal life, parents/relatives, community/government systems, and broader life disruptions.
 Sometimes make it weirdly funny or ridiculous, but still clearly negative.
 ${avoid ? `Do NOT repeat or paraphrase this scenario: "${avoid}".` : ""}

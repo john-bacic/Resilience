@@ -66,11 +66,14 @@ export async function POST(request) {
         max_tokens: 500,
         temperature: 0.4,
         system:
-          "You are a resilience journaling coach. Return strict JSON only with keys: triggered, fact, story, outsideControl, insideControl, chosenResponse, lesson. triggered must be an object with booleans step1 step2 step3. Keep text concise and practical.",
+          "You are a resilience journaling coach. Return strict JSON only with keys: triggered, fact, story, outsideControl, insideControl, chosenResponse, lesson. triggered must be an object with booleans step1 step2 step3. Keep text concise, practical, and in casual everyday language.",
         messages: [
           {
             role: "user",
-            content: `Analyze this log entry and prefill journaling fields:\n\n${entryText}`
+            content: `Analyze this log entry and prefill journaling fields.
+Write naturally and casually (not formal).
+
+${entryText}`
           }
         ]
       })

@@ -300,6 +300,18 @@ export default function ResilienceApp() {
   const [reminderDraft, setReminderDraft] = useState("08:00");
   const [isPrefillingReflection, setIsPrefillingReflection] = useState(false);
   const [selectedProgressDate, setSelectedProgressDate] = useState(null);
+  const [isDiaryEditModalOpen, setIsDiaryEditModalOpen] = useState(false);
+  const [editingDiaryId, setEditingDiaryId] = useState(null);
+  const [editingDiaryDraft, setEditingDiaryDraft] = useState({
+    title: "",
+    scenario: "",
+    fact: "",
+    story: "",
+    chosenResponse: "",
+    lesson: ""
+  });
+  const [lastDeletedDiaryEntry, setLastDeletedDiaryEntry] = useState(null);
+  const deleteUndoTimerRef = useRef(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflection, setReflection] = useState({
     reaction: "",
@@ -627,6 +639,96 @@ export default function ResilienceApp() {
     setAnalysis(null);
     setTab("log");
   }
+
+  function openDiaryEditor(entry) {
+    setEditingDiaryId(entry.id);
+    setEditingDiaryDraft({
+      title: entry.title || "",
+      scenario: entry.scenario || "",
+      fact: entry.fact || "",
+      story: entry.story || "",
+      chosenResponse: entry.chosenResponse || "",
+      lesson: entry.lesson || ""
+    });
+    setIsDiaryEditModalOpen(true);
+  }
+
+  function saveDiaryEdit() {
+    if (!editingDiaryId) return;
+    setAndPersist((prev) => ({
+      ...prev,
+      diary: prev.diary.map((entry) =>
+        entry.id === editingDiaryId
+          ? {
+              ...entry,
+              title: editingDiaryDraft.title,
+              scenario: editingDiaryDraft.scenario,
+              fact: editingDiaryDraft.fact,
+              story: editingDiaryDraft.story,
+              chosenResponse: editingDiaryDraft.chosenResponse,
+              lesson: editingDiaryDraft.lesson
+            }
+          : entry
+      )
+    }));
+    setIsDiaryEditModalOpen(false);
+    setEditingDiaryId(null);
+  }
+
+  function deleteDiaryEntry(entryId) {
+    const confirmed = window.confirm("Delete this diary entry?");
+    if (!confirmed) return;
+    setAndPersist((prev) => {
+      const deleteIndex = prev.diary.findIndex((entry) => entry.id === entryId);
+      const deletedEntry = deleteIndex >= 0 ? prev.diary[deleteIndex] : null;
+      if (!deletedEntry) return prev;
+
+      if (deleteUndoTimerRef.current) {
+        clearTimeout(deleteUndoTimerRef.current);
+      }
+      setLastDeletedDiaryEntry({
+        entry: deletedEntry,
+        index: deleteIndex
+      });
+      deleteUndoTimerRef.current = setTimeout(() => {
+        setLastDeletedDiaryEntry(null);
+        deleteUndoTimerRef.current = null;
+      }, 6000);
+
+      return {
+        ...prev,
+        diary: prev.diary.filter((entry) => entry.id !== entryId)
+      };
+    });
+    if (editingDiaryId === entryId) {
+      setIsDiaryEditModalOpen(false);
+      setEditingDiaryId(null);
+    }
+  }
+
+  function undoDeleteDiaryEntry() {
+    if (!lastDeletedDiaryEntry) return;
+    if (deleteUndoTimerRef.current) {
+      clearTimeout(deleteUndoTimerRef.current);
+      deleteUndoTimerRef.current = null;
+    }
+    const { entry, index } = lastDeletedDiaryEntry;
+    setAndPersist((prev) => {
+      const nextDiary = [...prev.diary];
+      const safeIndex = Math.max(0, Math.min(index, nextDiary.length));
+      nextDiary.splice(safeIndex, 0, entry);
+      return { ...prev, diary: nextDiary };
+    });
+    setLastDeletedDiaryEntry(null);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (deleteUndoTimerRef.current) {
+        clearTimeout(deleteUndoTimerRef.current);
+      }
+    };
+  }, []);
 
   function displayTo24HourTime(value) {
     const raw = String(value || "").trim();
@@ -957,10 +1059,22 @@ export default function ResilienceApp() {
                       <div className="grid gap-4">
                         {app.diary.map((entry) => (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                              {new Date(entry.createdAt).toLocaleDateString()}
-                            </p>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                  {new Date(entry.createdAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
+                                  Edit
+                                </Button>
+                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
                             {entry.scenario && (
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
                             )}
@@ -1086,10 +1200,22 @@ export default function ResilienceApp() {
                       <div className="grid gap-4">
                         {progressDiaryEntries.map((entry) => (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                              {new Date(entry.createdAt).toLocaleDateString()}
-                            </p>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                  {new Date(entry.createdAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
+                                  Edit
+                                </Button>
+                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
                             {entry.scenario && (
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
                             )}
@@ -1286,6 +1412,76 @@ export default function ResilienceApp() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {isDiaryEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <Card className="max-h-[92vh] w-full max-w-2xl overflow-auto">
+            <CardHeader>
+              <CardTitle>Edit diary entry</CardTitle>
+              <CardDescription>Update or remove this entry.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                value={editingDiaryDraft.title}
+                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="Title"
+              />
+              <Textarea
+                value={editingDiaryDraft.scenario}
+                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, scenario: e.target.value }))}
+                placeholder="Scenario"
+              />
+              <Textarea
+                value={editingDiaryDraft.fact}
+                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, fact: e.target.value }))}
+                placeholder="Fact"
+              />
+              <Textarea
+                value={editingDiaryDraft.story}
+                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, story: e.target.value }))}
+                placeholder="Story"
+              />
+              <Textarea
+                value={editingDiaryDraft.chosenResponse}
+                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, chosenResponse: e.target.value }))}
+                placeholder="Chosen response"
+              />
+              <Textarea
+                value={editingDiaryDraft.lesson}
+                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, lesson: e.target.value }))}
+                placeholder="Lesson"
+              />
+              <div className="flex justify-between pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (editingDiaryId) deleteDiaryEntry(editingDiaryId);
+                  }}
+                >
+                  Delete entry
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setIsDiaryEditModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={saveDiaryEdit}>Save changes</Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {lastDeletedDiaryEntry && (
+        <div className="fixed bottom-4 left-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-slate-700 dark:text-slate-200">Diary entry deleted.</p>
+            <Button variant="outline" className="px-3 py-1 text-xs" onClick={undoDeleteDiaryEntry}>
+              Undo
+            </Button>
+          </div>
         </div>
       )}
     </div>
