@@ -59,6 +59,16 @@ const DEFAULT_STATE = {
   startDate: null,
   reminderTime: "8:00 AM",
   tone: "Balanced",
+  personalProfile: {
+    age: "",
+    maritalStatus: "",
+    children: "",
+    dog: "",
+    partner: "",
+    job: "",
+    friends: "",
+    notes: ""
+  },
   intentions: [],
   reflections: [],
   diary: [],
@@ -93,6 +103,23 @@ function programDayFromStart(startDateKey) {
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const diffDays = Math.floor((todayStart - start) / 86400000) + 1;
   return Math.max(1, Math.min(30, diffDays));
+}
+
+function profileToScenarioContext(profile) {
+  if (!profile || typeof profile !== "object") return "";
+  const entries = [
+    ["Age", profile.age],
+    ["Marital status", profile.maritalStatus],
+    ["Children", profile.children],
+    ["Dog", profile.dog],
+    ["Partner/Girlfriend", profile.partner],
+    ["Job", profile.job],
+    ["Friends", profile.friends],
+    ["Other personal context", profile.notes]
+  ]
+    .map(([label, value]) => [label, String(value || "").trim()])
+    .filter(([, value]) => value.length > 0);
+  return entries.map(([label, value]) => `${label}: ${value}`).join(" | ");
 }
 
 function base64UrlToUint8Array(base64UrlString) {
@@ -193,18 +220,46 @@ function Button({ className = "", variant = "default", children, ...props }) {
     </button>
   );
 }
-function Input(props) {
+function Input({ className = "", onFocus, onBlur, onChange, value, clearable = true, ...props }) {
+  const [isFocused, setIsFocused] = useState(false);
+  const hasValue = String(value ?? "").length > 0;
+
   return (
-    <input
-      {...props}
-      className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
-        props.className || ""
-      }`}
-    />
+    <div className="relative">
+      <input
+        {...props}
+        value={value}
+        onChange={onChange}
+        onFocus={(event) => {
+          setIsFocused(true);
+          if (onFocus) onFocus(event);
+        }}
+        onBlur={(event) => {
+          setIsFocused(false);
+          if (onBlur) onBlur(event);
+        }}
+        className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
+          clearable ? "pr-8" : ""
+        } ${className}`}
+      />
+      {clearable && isFocused && hasValue ? (
+        <button
+          type="button"
+          className="absolute right-2 top-[calc(50%-2px)] inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-xs leading-none text-slate-500 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onChange?.({ target: { value: "" } })}
+          aria-label="Clear input"
+        >
+          x
+        </button>
+      ) : null}
+    </div>
   );
 }
-function Textarea({ className = "", onInput, value, ...props }) {
+function Textarea({ className = "", onInput, onFocus, onBlur, onChange, value, clearable = true, ...props }) {
   const textareaRef = useRef(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const hasValue = String(value ?? "").length > 0;
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -214,18 +269,42 @@ function Textarea({ className = "", onInput, value, ...props }) {
   }, [value]);
 
   return (
-    <textarea
-      {...props}
-      ref={textareaRef}
-      rows={1}
-      value={value}
-      onInput={(event) => {
-        event.currentTarget.style.height = "auto";
-        event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
-        if (onInput) onInput(event);
-      }}
-      className={`w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
-    />
+    <div className="relative">
+      <textarea
+        {...props}
+        ref={textareaRef}
+        rows={1}
+        value={value}
+        onChange={onChange}
+        onFocus={(event) => {
+          setIsFocused(true);
+          if (onFocus) onFocus(event);
+        }}
+        onBlur={(event) => {
+          setIsFocused(false);
+          if (onBlur) onBlur(event);
+        }}
+        onInput={(event) => {
+          event.currentTarget.style.height = "auto";
+          event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+          if (onInput) onInput(event);
+        }}
+        className={`w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${
+          clearable ? "pr-8" : ""
+        } ${className}`}
+      />
+      {clearable && isFocused && hasValue ? (
+        <button
+          type="button"
+          className="absolute right-2 top-[calc(50%-2px)] inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-xs leading-none text-slate-500 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onChange?.({ target: { value: "" } })}
+          aria-label="Clear text"
+        >
+          x
+        </button>
+      ) : null}
+    </div>
   );
 }
 function Badge({ children, className = "" }) {
@@ -329,6 +408,9 @@ export default function ResilienceApp() {
   const [isClient, setIsClient] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("default");
   const [isPushEnabled, setIsPushEnabled] = useState(false);
+  const [profileDraft, setProfileDraft] = useState(DEFAULT_STATE.personalProfile);
+  const [profileSavedFeedback, setProfileSavedFeedback] = useState(false);
+  const profileSavedTimerRef = useRef(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflectionScenario, setReflectionScenario] = useState("");
   const [reflection, setReflection] = useState({
@@ -353,6 +435,31 @@ export default function ResilienceApp() {
     moodBefore: 4,
     moodAfter: 6
   });
+
+  function savePersonalProfile() {
+    const nextProfile = {
+      age: String(profileDraft.age || "").trim(),
+      maritalStatus: String(profileDraft.maritalStatus || "").trim(),
+      children: String(profileDraft.children || "").trim(),
+      dog: String(profileDraft.dog || "").trim(),
+      partner: String(profileDraft.partner || "").trim(),
+      job: String(profileDraft.job || "").trim(),
+      friends: String(profileDraft.friends || "").trim(),
+      notes: String(profileDraft.notes || "").trim()
+    };
+    setAndPersist((prev) => ({
+      ...prev,
+      personalProfile: nextProfile
+    }));
+    setProfileSavedFeedback(true);
+    if (profileSavedTimerRef.current) {
+      clearTimeout(profileSavedTimerRef.current);
+    }
+    profileSavedTimerRef.current = setTimeout(() => {
+      setProfileSavedFeedback(false);
+    }, 1800);
+    void loadDailyScenario(nextProfile);
+  }
 
   async function refreshVersionInfo() {
     try {
@@ -533,6 +640,22 @@ export default function ResilienceApp() {
     localStorage.setItem("resilience-focus-open", String(isFocusOpen));
   }, [isFocusOpen]);
 
+  useEffect(
+    () => () => {
+      if (profileSavedTimerRef.current) {
+        clearTimeout(profileSavedTimerRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    setProfileDraft({
+      ...DEFAULT_STATE.personalProfile,
+      ...(app.personalProfile || {})
+    });
+  }, [app.personalProfile]);
+
   useEffect(() => {
     async function loadState() {
       try {
@@ -552,13 +675,17 @@ export default function ResilienceApp() {
   const currentDateKey = useMemo(() => toDateKey(new Date()), []);
   const currentProgramDay = useMemo(() => programDayFromStart(app.startDate), [app.startDate]);
 
-  async function loadDailyScenario() {
+  async function loadDailyScenario(profileOverride) {
     try {
       setIsRefreshingScenario(true);
       const params = new URLSearchParams({
         day: String(currentProgramDay),
         t: String(Date.now())
       });
+      const profileContext = profileToScenarioContext(profileOverride || app.personalProfile);
+      if (profileContext) {
+        params.set("profile", profileContext);
+      }
       if (dailyScenario) {
         params.set("avoid", dailyScenario);
       }
@@ -1039,6 +1166,63 @@ export default function ResilienceApp() {
               </div>
               {isFocusOpen && (
                 <div>
+                  <div
+                    className="mb-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">About you</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Used to make "What could go wrong today" more specific to your real life.
+                    </p>
+                    <div className="mt-3 grid gap-2">
+                      <Input
+                        value={profileDraft.age}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, age: event.target.value }))}
+                        placeholder="Age"
+                      />
+                      <Input
+                        value={profileDraft.maritalStatus}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, maritalStatus: event.target.value }))}
+                        placeholder="Marital status"
+                      />
+                      <Input
+                        value={profileDraft.children}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, children: event.target.value }))}
+                        placeholder="Children (e.g., 2 kids, no children)"
+                      />
+                      <Input
+                        value={profileDraft.dog}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, dog: event.target.value }))}
+                        placeholder="Dog or pets"
+                      />
+                      <Input
+                        value={profileDraft.partner}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, partner: event.target.value }))}
+                        placeholder="Girlfriend/partner"
+                      />
+                      <Input
+                        value={profileDraft.job}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, job: event.target.value }))}
+                        placeholder="Job"
+                      />
+                      <Input
+                        value={profileDraft.friends}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, friends: event.target.value }))}
+                        placeholder="Friends/social context"
+                      />
+                      <Textarea
+                        value={profileDraft.notes}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, notes: event.target.value }))}
+                        placeholder="Anything else personal that should shape scenarios"
+                        className="min-h-[90px]"
+                      />
+                    </div>
+                    <Button variant="outline" className="mt-3 w-full gap-2" onClick={savePersonalProfile}>
+                      {profileSavedFeedback ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : null}
+                      {profileSavedFeedback ? "Saved" : "Save profile context"}
+                    </Button>
+                  </div>
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Current focus</p>
                   <>
                     <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -1434,16 +1618,6 @@ export default function ResilienceApp() {
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
                     What reaction usually comes first?
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setReflection((prev) => ({ ...prev, reaction: "" }))}
-                    disabled={!reflection.reaction}
-                    className="rounded-md px-2 py-0.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-200 dark:hover:bg-emerald-900/60"
-                    aria-label="Clear reaction field"
-                    title="Clear"
-                  >
-                    X
-                  </button>
                 </div>
                 <Textarea
                   value={reflection.reaction}
