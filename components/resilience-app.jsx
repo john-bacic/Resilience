@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import {
   BookOpen,
   Bell,
@@ -15,7 +14,6 @@ import {
   NotebookPen,
   RefreshCw,
   Sun,
-  Shield,
   Sparkles
 } from "lucide-react";
 
@@ -136,6 +134,35 @@ function programDayFromStart(startDateKey) {
   return Math.max(1, Math.min(30, diffDays));
 }
 
+/** Program day (1–30) for an event on `entryDateKey` relative to program `startDateKey`. Null if entry is before start. */
+function programDayForEntry(startDateKey, entryDateKey) {
+  const [y1, m1, d1] = String(startDateKey).split("-").map(Number);
+  const [y2, m2, d2] = String(entryDateKey).split("-").map(Number);
+  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return 1;
+  const start = new Date(y1, m1 - 1, d1);
+  const end = new Date(y2, m2 - 1, d2);
+  if (end < start) return null;
+  const diffDays = Math.floor((end - start) / 86400000) + 1;
+  return Math.max(1, Math.min(30, diffDays));
+}
+
+function formatDateKeyDisplay(dateKey) {
+  const [y, m, d] = String(dateKey).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
+function dateKeyYearsAgo(years) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return toDateKey(d);
+}
+
 function diarySourceLabel(entry) {
   const s = entry.source;
   if (s === "reflection") return "Reflection";
@@ -228,6 +255,29 @@ function detectSteps(text) {
   return triggered;
 }
 
+function StoicMarkIcon({ className = "" }) {
+  return (
+    <svg
+      className={className}
+      width={29}
+      height={33}
+      viewBox="0 0 29 33"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M19.4532 15.354C19.3348 15.4178 19.3131 15.4802 19.342 15.6107C19.4677 16.1605 19.5933 16.7132 19.7002 17.2702C19.8446 18.0534 19.2669 18.7628 18.484 18.7628C15.8409 18.7671 13.1962 18.7628 10.5531 18.7628C9.57381 18.7628 9.1954 17.8867 9.31095 17.2441C9.41494 16.6798 9.54349 16.1155 9.66194 15.5513C9.66916 15.5034 9.64316 15.4251 9.60706 15.399C9.37451 15.2423 9.1261 15.1059 8.8892 14.9464C7.38417 13.9542 6.27491 12.6211 5.62488 10.943C4.85646 8.96013 4.98215 6.98454 5.86464 5.061C6.33404 4.04705 6.99991 3.17527 7.83476 2.43259C9.25025 1.17062 10.8896 0.37861 12.763 0.0928638C13.0288 0.0522485 13.3032 0.0333906 13.5733 0.00728229C13.5733 2.93962e-05 15.5434 -0.0144758 15.8987 0.0406441C16.0691 0.066754 16.2425 0.0885129 16.4129 0.121875C18.7528 0.567205 20.7129 1.67395 22.2147 3.54223C23.2431 4.8158 23.8006 6.28956 23.8742 7.92745C23.9479 9.49113 23.5449 10.946 22.7202 12.2762C21.9027 13.5947 20.7905 14.5927 19.4559 15.3542L19.4532 15.354ZM10.8117 7.24825C9.67354 7.26711 8.7737 8.18097 8.77084 9.35443C8.76651 10.5352 9.68802 11.4302 10.8969 11.4418C12.0134 11.449 12.9826 10.4423 12.9378 9.3588C12.9898 8.33037 12.1275 7.23083 10.8117 7.24971V7.24825ZM18.103 7.24825C16.9677 7.26711 16.0693 8.18097 16.0693 9.35734C16.065 10.5381 16.9865 11.4287 18.1954 11.4403C19.3119 11.4476 20.2768 10.4409 20.2334 9.35734C20.2854 8.32892 19.4275 7.22938 18.103 7.24825Z"
+        fill="currentColor"
+      />
+      <path
+        d="M0.645509 28.4554C1.06011 28.244 1.47899 28.0385 1.89359 27.8315C2.76006 27.3968 3.62369 26.9577 4.49019 26.5216C6.20165 25.6626 7.91605 24.8066 9.63173 23.9476C9.66473 23.9284 9.69485 23.9018 9.73789 23.8722C9.56574 23.7894 9.41511 23.7214 9.26447 23.6445C6.85581 22.4336 4.45009 21.2183 2.03999 20.0075C1.55222 19.7621 1.06304 19.5196 0.578144 19.2654C0.0789242 19.0081 -0.152047 18.3753 0.107601 17.8505C0.411732 17.234 0.724463 16.616 1.00709 15.9876C1.23519 15.4805 1.85205 15.1627 2.48327 15.4923C3.30527 15.9241 4.14022 16.3395 4.9737 16.7564C6.24761 17.3922 7.52296 18.0205 8.79681 18.6607C10.6445 19.5877 12.4911 20.5191 14.3429 21.4432C14.4132 21.4772 14.5266 21.4772 14.5997 21.4432C15.0071 21.2539 15.4074 21.0529 15.8119 20.8533C17.2996 20.1111 18.783 19.3659 20.2707 18.6237C22.1844 17.6657 24.0938 16.7091 26.0075 15.7511C26.2313 15.6417 26.4522 15.5204 26.6832 15.4288C27.171 15.2395 27.6716 15.4095 27.9169 15.8871C28.2583 16.545 28.5782 17.2192 28.8939 17.8933C29.0732 18.2763 29.0258 18.6548 28.7475 18.9608C28.5897 19.1308 28.3803 19.2669 28.1708 19.3733C25.2443 20.8459 22.3165 22.311 19.3898 23.7792C19.3382 23.8058 19.2908 23.8354 19.2105 23.8783C19.298 23.9241 19.3496 23.9537 19.4013 23.9803C19.8675 24.2109 20.3338 24.4342 20.8 24.6693C22.9562 25.7515 25.1152 26.8382 27.2713 27.9249C27.6386 28.1097 28.0058 28.2915 28.3731 28.4852C28.9426 28.7839 29.1262 29.3028 28.8795 29.9046C28.825 30.0376 28.7618 30.1662 28.7001 30.2949C28.4434 30.8242 28.2009 31.3653 27.9212 31.8813C27.6529 32.3692 27.1608 32.5244 26.6544 32.3204C26.544 32.2745 26.4378 32.2213 26.3316 32.1696C25.0276 31.5191 23.7279 30.8641 22.428 30.2121C21.025 29.5084 19.6191 28.8076 18.216 28.1082C17.0296 27.5139 15.8432 26.9195 14.661 26.3178C14.5433 26.2572 14.4515 26.2572 14.3339 26.3178C13.5664 26.7081 12.7945 27.0896 12.027 27.4754C10.7417 28.123 9.45627 28.778 8.17089 29.4211C6.26864 30.3747 4.36645 31.3284 2.46408 32.279C2.25893 32.381 2.04517 32.4461 1.80991 32.3928C1.46129 32.313 1.20021 32.1208 1.0381 31.7911C0.725352 31.1583 0.416918 30.5226 0.115648 29.8868C0.056829 29.7656 0.0195322 29.6222 0.0166615 29.4891C-0.00198823 28.9939 0.251933 28.6642 0.666516 28.4527L0.645509 28.4554Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function Card({ className = "", children }) {
   return (
     <div
@@ -249,14 +299,14 @@ function CardDescription({ className = "", children }) {
 function CardContent({ className = "", children }) {
   return <div className={`p-6 pt-3 ${className}`}>{children}</div>;
 }
-function Button({ className = "", variant = "default", children, ...props }) {
+function Button({ className = "", variant = "default", type = "button", children, ...props }) {
   const base = "inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm transition";
   const style =
     variant === "outline"
       ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
       : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
   return (
-    <button className={`${base} ${style} ${className}`} {...props}>
+    <button type={type} className={`${base} ${style} ${className}`} {...props}>
       {children}
     </button>
   );
@@ -326,6 +376,7 @@ function Progress({ value }) {
 function NavButton({ active, icon: Icon, label, onClick }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm transition ${
         active
@@ -356,24 +407,20 @@ function SectionTitle({ icon: Icon, title, subtitle }) {
 function FocusSettingsIcon({ className = "" }) {
   return (
     <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
+      width={20}
+      height={19}
+      viewBox="0 0 20 19"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden
     >
       <path
-        d="M18.1999 10.0001C18.1999 10.6668 17.6597 11.2001 16.9997 11.2124C16.3278 11.2001 15.7998 10.6668 15.7998 10.0001C15.7998 9.32122 16.3278 8.78786 16.9999 8.78786C17.66 8.78786 18.1999 9.32122 18.1999 10.0001ZM19.9999 10.0001C19.9999 8.6303 19.1239 7.49101 17.9 7.10323V0.909084C17.9 0.400041 17.4919 1.06209e-07 16.9999 1.06209e-07C16.4959 1.06209e-07 16.0999 0.400041 16.0999 0.909158L16.0999 7.10312C14.8758 7.49092 14 8.63049 14 10C14 11.3576 14.8761 12.4969 16.0999 12.8969V19.0908C16.0999 19.5877 16.496 20 17 20C17.4919 20 17.9001 19.5877 17.9001 19.0908V12.8967C19.1238 12.4967 20 11.3574 20 9.99982L19.9999 10.0001Z"
+        d="M0.865042 5.02488H8.51313C8.78033 6.27772 9.60898 7.33831 10.76 7.8997C11.911 8.46012 13.2564 8.46012 14.4074 7.8997C15.5594 7.33827 16.3881 6.27775 16.6543 5.02488H19.135C19.6122 5.02488 20 4.63809 20 4.15983C20 3.6826 19.6122 3.29479 19.135 3.29479H16.6543C16.3881 2.04194 15.5595 0.982466 14.4074 0.421076C13.2564 -0.140359 11.911 -0.140359 10.76 0.421076C9.60907 0.982511 8.7804 2.04199 8.51313 3.29479H0.865042C0.387805 3.29479 0 3.6826 0 4.15983C0 4.63809 0.387805 5.02488 0.865042 5.02488ZM12.5846 1.72995C13.5682 1.72995 14.455 2.32259 14.8304 3.23131C15.2068 4.14003 14.9988 5.18597 14.3032 5.88056C13.6077 6.57612 12.5617 6.78406 11.6531 6.4077C10.7444 6.03028 10.1528 5.14341 10.1528 4.15992C10.1549 2.81764 11.2424 1.73115 12.5847 1.73004L12.5846 1.72995Z"
         fill="currentColor"
       />
       <path
-        d="M11.2002 14.5456C11.2002 15.2123 10.66 15.7456 10 15.7578C9.32791 15.7456 8.79988 15.2123 8.79988 14.5456C8.79988 13.8667 9.32791 13.3334 10 13.3334C10.66 13.3334 11.2002 13.8667 11.2002 14.5456ZM13 14.5456C13 13.1758 12.1239 12.0365 10.9001 11.6487V0.909295C10.9001 0.400036 10.4919 -1.49012e-07 10 -1.49012e-07C9.49597 -1.49012e-07 9.09993 0.400037 9.09993 0.909148V11.6484C7.8758 12.0362 7 13.1758 7 14.5453C7 15.9028 7.87607 17.0421 9.09993 17.4303V19.0909C9.09993 19.5877 9.49597 20 10 20C10.4919 20 10.9001 19.5877 10.9001 19.0909V17.4302C12.1241 17.0424 13 15.9031 13 14.5456V14.5456Z"
-        fill="currentColor"
-      />
-      <path
-        d="M4.19999 5.45442C4.19999 6.12109 3.65988 6.65444 2.99989 6.66666C2.3278 6.65443 1.79979 6.12109 1.79979 5.45442C1.79979 4.77554 2.3278 4.24219 2.99989 4.24219C3.65988 4.24248 4.19999 4.77574 4.19999 5.45442ZM6 5.45442C6 4.08463 5.12396 2.94536 3.90013 2.55758V0.909144C3.90013 0.400035 3.492 -3.15959e-07 3.00009 -3.15959e-07C2.49608 -3.15959e-07 2.10005 0.400035 2.10005 0.909144V2.55758C0.876026 2.9456 0 4.08498 0 5.45442C0 6.81199 0.876044 7.95127 2.09987 8.33941V19.0909C2.09987 19.5877 2.4959 20 2.99991 20C3.49182 20 3.89995 19.5877 3.89995 19.0909V8.33923C5.12397 7.95149 6 6.81218 6 5.45442Z"
+        d="M19.0674 13.6462H11.0201C10.7529 12.3934 9.92421 11.3328 8.77317 10.7714C7.6222 10.211 6.27674 10.211 5.12579 10.7714C3.97378 11.3328 3.14514 12.3933 2.8789 13.6462H0.930472C0.453235 13.6462 0.0654297 14.033 0.0654297 14.5113C0.0654297 14.9885 0.453235 15.3763 0.930472 15.3763H2.8789C3.14507 16.6291 3.97371 17.6886 5.12579 18.25C6.27677 18.8114 7.62222 18.8114 8.77317 18.25C9.92412 17.6886 10.7528 16.6291 11.0201 15.3763H19.0674C19.5446 15.3763 19.9324 14.9885 19.9324 14.5113C19.9324 14.033 19.5446 13.6462 19.0674 13.6462ZM6.94859 16.9411C5.96502 16.9411 5.07815 16.3485 4.70281 15.4398C4.32643 14.5311 4.53438 13.4851 5.22996 12.7905C5.92552 12.095 6.97149 11.887 7.88009 12.2634C8.78881 12.6408 9.38041 13.5277 9.38041 14.5112C9.37833 15.8534 8.29079 16.9399 6.94853 16.941L6.94859 16.9411Z"
         fill="currentColor"
       />
     </svg>
@@ -462,6 +509,7 @@ export default function ResilienceApp() {
     moodBefore: 4,
     moodAfter: 6
   });
+  const [logEntryDateKey, setLogEntryDateKey] = useState(() => toDateKey(new Date()));
 
   function savePersonalProfile() {
     const nextProfile = {
@@ -648,7 +696,7 @@ export default function ResilienceApp() {
         const now = new Date();
         if (now.getHours() === targetHour && now.getMinutes() === targetMinute) {
           if (localStorage.getItem(key) === "shown") return;
-          new Notification("Unshaken reminder", {
+          new Notification("stoic as fuck reminder", {
             body: "Quick check-in: do your morning reflection before the day runs away."
           });
           localStorage.setItem(key, "shown");
@@ -692,7 +740,12 @@ export default function ResilienceApp() {
       try {
         const response = await fetch("/api/state", { cache: "no-store", signal: controller.signal });
         if (cancelled) return;
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (response.status === 401) {
+            console.warn("/api/state: unauthorized — using local default until signed in.");
+          }
+          return;
+        }
         const payload = await response.json();
         if (cancelled) return;
         setApp(normalizeAppState(payload?.state));
@@ -711,8 +764,25 @@ export default function ResilienceApp() {
     };
   }, []);
 
-  const currentDateKey = useMemo(() => toDateKey(new Date()), []);
+  /** Never stay on the loading screen forever (chunk stalls, hung fetch, Strict Mode races). */
+  useEffect(() => {
+    const maxWait = window.setTimeout(() => {
+      setLoading(false);
+    }, 15000);
+    return () => window.clearTimeout(maxWait);
+  }, []);
+
+  const todayDateKey = toDateKey(new Date());
   const currentProgramDay = useMemo(() => programDayFromStart(app.startDate), [app.startDate]);
+  const logEntryPreviewStart = useMemo(
+    () =>
+      app.startDate ? (logEntryDateKey < app.startDate ? logEntryDateKey : app.startDate) : logEntryDateKey,
+    [app.startDate, logEntryDateKey]
+  );
+  const logEntryPreviewDay = useMemo(
+    () => programDayForEntry(logEntryPreviewStart, logEntryDateKey),
+    [logEntryPreviewStart, logEntryDateKey]
+  );
 
   async function loadDailyScenario(profileOverride) {
     try {
@@ -882,7 +952,7 @@ export default function ResilienceApp() {
       intentions: reflection.intention
         ? [{ id: entry.id, text: reflection.intention, day: currentProgramDay }, ...prev.intentions]
         : prev.intentions,
-      startDate: prev.startDate || currentDateKey,
+      startDate: prev.startDate || todayDateKey,
       lastCompletedDay: Math.max(prev.lastCompletedDay, currentProgramDay),
       streak:
         prev.lastCompletedDay === currentProgramDay - 1 || prev.lastCompletedDay === 0
@@ -937,9 +1007,22 @@ export default function ResilienceApp() {
     if (analysis.step1) triggeredSteps.push("step1");
     if (analysis.step2) triggeredSteps.push("step2");
     if (analysis.step3) triggeredSteps.push("step3");
+
+    const nextStart = app.startDate
+      ? logEntryDateKey < app.startDate
+        ? logEntryDateKey
+        : app.startDate
+      : logEntryDateKey;
+    const dayForEntry = programDayForEntry(nextStart, logEntryDateKey);
+    if (dayForEntry == null) {
+      window.alert("That date is before your program start. Choose a later date.");
+      return;
+    }
+
     const diaryEntry = {
       id: getRandomId(),
-      day: currentProgramDay,
+      day: dayForEntry,
+      loggedDateKey: logEntryDateKey,
       title: eventText.slice(0, 55) || "Untitled entry",
       rawText: eventText,
       source: "log",
@@ -950,10 +1033,15 @@ export default function ResilienceApp() {
       createdAt: new Date().toISOString()
     };
     setAndPersist((prev) => {
-      const nextCompletedDay = Math.max(prev.lastCompletedDay, currentProgramDay);
+      const persistedNextStart = prev.startDate
+        ? logEntryDateKey < prev.startDate
+          ? logEntryDateKey
+          : prev.startDate
+        : logEntryDateKey;
+      const nextCompletedDay = Math.max(prev.lastCompletedDay, dayForEntry);
       return {
         ...prev,
-        startDate: prev.startDate || currentDateKey,
+        startDate: persistedNextStart,
         diary: [diaryEntry, ...prev.diary],
         lastCompletedDay: nextCompletedDay,
         streak: nextCompletedDay > 0 ? Math.max(prev.streak, 1) : prev.streak
@@ -961,6 +1049,7 @@ export default function ResilienceApp() {
     });
     setEventText("");
     setAnalysis(null);
+    setLogEntryDateKey(todayDateKey);
     setTab("log");
   }
 
@@ -1137,7 +1226,7 @@ export default function ResilienceApp() {
   const calendarMonthLabel = calendarNow.toLocaleDateString([], { month: "long", year: "numeric" });
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
   const firstWeekday = new Date(calendarYear, calendarMonth, 1).getDay();
-  const todayDateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(
+  const progressCalendarTodayKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(
     calendarNow.getDate()
   ).padStart(2, "0")}`;
   const selectedDayLabel = selectedProgressDate
@@ -1153,6 +1242,7 @@ export default function ResilienceApp() {
 
   const progressDiaryEntries = selectedProgressDate
     ? app.diary.filter((entry) => {
+        if (entry.loggedDateKey) return entry.loggedDateKey === selectedProgressDate;
         const entryDate = new Date(entry.createdAt);
         const entryKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}-${String(
           entryDate.getDate()
@@ -1191,12 +1281,12 @@ export default function ResilienceApp() {
             <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="shrink-0 rounded-2xl bg-slate-900 p-2 text-white dark:bg-slate-100 dark:text-slate-900">
-                    <Shield className="h-5 w-5" />
+                  <div className="shrink-0 text-slate-900 dark:text-slate-100">
+                    <StoicMarkIcon className="h-[33px] w-[29px]" />
                   </div>
                   <div className="min-w-0">
-                    <CardTitle>Unshaken</CardTitle>
-                    <CardDescription>30-day Resilience</CardDescription>
+                    <CardTitle>stoic as fuck</CardTitle>
+                    <CardDescription>30-day resilience</CardDescription>
                   </div>
                 </div>
                 <button
@@ -1208,7 +1298,7 @@ export default function ResilienceApp() {
                     isFocusOpen ? "text-emerald-700 dark:text-emerald-400" : ""
                   }`}
                 >
-                  <FocusSettingsIcon className="h-5 w-5" />
+                  <FocusSettingsIcon className="h-[19px] w-5" />
                 </button>
               </div>
               {isFocusOpen && (
@@ -1307,11 +1397,7 @@ export default function ResilienceApp() {
         </Card>
 
         <div className="min-w-0 space-y-6">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="grid min-w-0 gap-6"
-          >
+          <div className="grid min-w-0 gap-6">
             {tab === "home" && (
               <div className="grid gap-6">
                 <Card>
@@ -1370,6 +1456,24 @@ export default function ResilienceApp() {
                       <SectionTitle icon={NotebookPen} title="Log what happened" subtitle="Write it and get guided." />
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="log-entry-date">
+                          When did this happen?
+                        </label>
+                        <Input
+                          id="log-entry-date"
+                          type="date"
+                          value={logEntryDateKey}
+                          min={dateKeyYearsAgo(5)}
+                          max={todayDateKey}
+                          onChange={(e) => setLogEntryDateKey(e.target.value || todayDateKey)}
+                        />
+                        {logEntryDateKey !== todayDateKey && logEntryPreviewDay != null && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Saved as Day {logEntryPreviewDay} of your program · {formatDateKeyDisplay(logEntryDateKey)}
+                          </p>
+                        )}
+                      </div>
                       <Textarea
                         value={eventText}
                         onChange={(e) => setEventText(e.target.value)}
@@ -1477,7 +1581,10 @@ export default function ResilienceApp() {
                                 {diaryTitleDisplay(entry)}
                               </h3>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {new Date(entry.createdAt).toLocaleDateString()}
+                                {entry.loggedDateKey
+                                  ? formatDateKeyDisplay(entry.loggedDateKey)
+                                  : new Date(entry.createdAt).toLocaleDateString()}
+                                {entry.day != null ? ` · Day ${entry.day}` : ""}
                               </p>
                             </div>
                             {entry.scenario && (
@@ -1551,8 +1658,9 @@ export default function ResilienceApp() {
                               dayNumber
                             ).padStart(2, "0")}`;
                             const isSelected = selectedProgressDate === dateKey;
-                            const isToday = dateKey === todayDateKey;
+                            const isToday = dateKey === progressCalendarTodayKey;
                             const hasEntries = app.diary.some((entry) => {
+                              if (entry.loggedDateKey) return entry.loggedDateKey === dateKey;
                               const entryDate = new Date(entry.createdAt);
                               const entryKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(
                                 2,
@@ -1621,7 +1729,10 @@ export default function ResilienceApp() {
                                 {diaryTitleDisplay(entry)}
                               </h3>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {new Date(entry.createdAt).toLocaleDateString()}
+                                {entry.loggedDateKey
+                                  ? formatDateKeyDisplay(entry.loggedDateKey)
+                                  : new Date(entry.createdAt).toLocaleDateString()}
+                                {entry.day != null ? ` · Day ${entry.day}` : ""}
                               </p>
                             </div>
                             {entry.scenario && (
@@ -1649,7 +1760,7 @@ export default function ResilienceApp() {
                 </Card>
               </div>
             )}
-          </motion.div>
+          </div>
         </div>
       </div>
 

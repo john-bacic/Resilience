@@ -1,3 +1,5 @@
+import { requireAuthUserId } from "@/lib/require-auth";
+
 const emptyReflection = {
   facts: "",
   story: "",
@@ -101,6 +103,9 @@ Return JSON only.`
 }
 
 export async function POST(request) {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+
   try {
     const body = await request.json();
     const reaction = String(body?.reaction || "").trim();

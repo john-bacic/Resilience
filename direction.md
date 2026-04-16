@@ -1,15 +1,3 @@
-Yes — this is a strong app concept.
-
-I’m assuming you meant **“scenarios,”** not “soneros.” A **sonero** is actually a salsa/son singer, so “negative possible scenarios” seems like the intended phrase here. ([yourdictionary.com][1])
-
-What you’re describing feels like a mix of:
-
-- morning mental training,
-- real-time emotional coaching,
-- and a 30-day Stoic-style diary.
-
-A good version of the app could work like this:
-
 ## Core idea
 
 Every morning, the app gives you **one possible difficult scenario**:
@@ -185,7 +173,7 @@ That keeps it practical instead of overwhelming.
 ## Name ideas
 
 - Control
-- Unshaken
+- stoic as fuck
 - Stoic Diary
 - Scenario
 - Armor

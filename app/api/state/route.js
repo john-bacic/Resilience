@@ -1,17 +1,25 @@
 import { defaultState } from "@/lib/default-state";
 import { getDb } from "@/lib/db";
+import { requireAuthUserId } from "@/lib/require-auth";
 
-let inMemoryState = { ...defaultState };
+/** @type {Map<string, object>} */
+const memoryByUser = new Map();
 
 function hasDatabaseConfig() {
   return Boolean(process.env.POSTGRES_URL || process.env.DATABASE_URL);
 }
 
-async function ensureStateTable() {
-  const db = getDb();
+function getMemoryState(userId) {
+  if (!memoryByUser.has(userId)) {
+    memoryByUser.set(userId, JSON.parse(JSON.stringify(defaultState)));
+  }
+  return memoryByUser.get(userId);
+}
+
+async function ensureUserStateTable(db) {
   await db`
-    CREATE TABLE IF NOT EXISTS app_state (
-      id INTEGER PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS resilience_user_state (
+      user_id TEXT PRIMARY KEY,
       state JSONB NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
@@ -19,19 +27,25 @@ async function ensureStateTable() {
 }
 
 export async function GET() {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+  const { userId } = authResult;
+
   if (!hasDatabaseConfig()) {
-    return Response.json({ state: inMemoryState, source: "memory" });
+    return Response.json({ state: getMemoryState(userId), source: "memory" });
   }
 
   try {
     const db = getDb();
-    await ensureStateTable();
-    const rows = await db`SELECT state FROM app_state WHERE id = 1 LIMIT 1;`;
+    await ensureUserStateTable(db);
+    const rows = await db`
+      SELECT state FROM resilience_user_state WHERE user_id = ${userId} LIMIT 1;
+    `;
     if (rows.length === 0) {
       await db`
-        INSERT INTO app_state (id, state, updated_at)
-        VALUES (1, ${JSON.stringify(defaultState)}::jsonb, NOW())
-        ON CONFLICT (id) DO NOTHING;
+        INSERT INTO resilience_user_state (user_id, state, updated_at)
+        VALUES (${userId}, ${JSON.stringify(defaultState)}::jsonb, NOW())
+        ON CONFLICT (user_id) DO NOTHING;
       `;
       return Response.json({ state: defaultState });
     }
@@ -46,6 +60,10 @@ export async function GET() {
 }
 
 export async function PUT(request) {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+  const { userId } = authResult;
+
   const body = await request.json();
   const state = body?.state;
   if (!state || typeof state !== "object") {
@@ -54,17 +72,17 @@ export async function PUT(request) {
   const safeState = { ...defaultState, ...state };
 
   if (!hasDatabaseConfig()) {
-    inMemoryState = safeState;
+    memoryByUser.set(userId, safeState);
     return Response.json({ state: safeState, source: "memory" });
   }
 
   try {
     const db = getDb();
-    await ensureStateTable();
+    await ensureUserStateTable(db);
     await db`
-      INSERT INTO app_state (id, state, updated_at)
-      VALUES (1, ${JSON.stringify(safeState)}::jsonb, NOW())
-      ON CONFLICT (id) DO UPDATE
+      INSERT INTO resilience_user_state (user_id, state, updated_at)
+      VALUES (${userId}, ${JSON.stringify(safeState)}::jsonb, NOW())
+      ON CONFLICT (user_id) DO UPDATE
       SET state = EXCLUDED.state,
           updated_at = NOW();
     `;

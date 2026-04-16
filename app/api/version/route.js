@@ -1,6 +1,11 @@
+import { requireAuthUserId } from "@/lib/require-auth";
+
 const DEFAULT_REPO = "john-bacic/Resilience";
 
 export async function GET() {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+
   try {
     const repo = process.env.GITHUB_REPO || DEFAULT_REPO;
     const response = await fetch(`https://api.github.com/repos/${repo}/commits/main`, {

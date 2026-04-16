@@ -8,3 +8,9 @@ yarn-error.log*
 pnpm-debug.log*
 coverage
 .vercel
+
+# clerk configuration (can include secrets)
+/.clerk/
+
+# local Cursor IDE config
+.cursor/

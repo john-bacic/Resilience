@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "vercel:sync-clerk": "node scripts/sync-clerk-env.mjs"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.2.1",
     "@neondatabase/serverless": "^0.10.4",
     "framer-motion": "^12.10.5",
     "lucide-react": "^0.511.0",

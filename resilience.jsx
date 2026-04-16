@@ -200,6 +200,7 @@ const SELF_TESTS = runSelfTests();
 function NavButton({ active, icon: Icon, label, onClick }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm transition ${
         active ? "bg-slate-900 text-white shadow-lg" : "bg-white text-slate-600 hover:bg-slate-100"
@@ -443,7 +444,7 @@ export default function ResilienceMVPApp() {
                 <Shield className="h-5 w-5" />
               </div>
               <div>
-                <CardTitle>Unshaken</CardTitle>
+                <CardTitle>stoic as fuck</CardTitle>
                 <CardDescription>30-day resilience MVP</CardDescription>
               </div>
             </div>

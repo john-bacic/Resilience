@@ -1,3 +1,5 @@
+import { requireAuthUserId } from "@/lib/require-auth";
+
 const FALLBACK_SCENARIOS = [
   "Someone does not reply to your message.",
   "A friend cancels plans at the last minute.",
@@ -57,6 +59,9 @@ const STYLE_VARIANTS = [
 ];
 
 export async function GET(request) {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+
   const { searchParams } = new URL(request.url);
   const day = Math.max(1, Number(searchParams.get("day")) || 1);
   const avoid = String(searchParams.get("avoid") || "").trim();

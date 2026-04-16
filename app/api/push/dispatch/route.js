@@ -47,8 +47,14 @@ function nowParts(timeZone) {
   };
 }
 
-async function ensureTables() {
-  const db = getDb();
+async function ensureTables(db) {
+  await db`
+    CREATE TABLE IF NOT EXISTS resilience_user_state (
+      user_id TEXT PRIMARY KEY,
+      state JSONB NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `;
   await db`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       endpoint TEXT PRIMARY KEY,
@@ -56,10 +62,13 @@ async function ensureTables() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `;
+  await db`ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS user_id TEXT;`;
   await db`
-    CREATE TABLE IF NOT EXISTS push_dispatch_log (
-      date_key TEXT PRIMARY KEY,
-      sent_at TIMESTAMPTZ DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS user_push_dispatch_log (
+      user_id TEXT NOT NULL,
+      date_key TEXT NOT NULL,
+      sent_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (user_id, date_key)
     );
   `;
 }
@@ -93,53 +102,78 @@ export async function GET(request) {
       vapidPrivate
     );
 
-    await ensureTables();
     const db = getDb();
-
-    const stateRows = await db`SELECT state FROM app_state WHERE id = 1 LIMIT 1;`;
-    const reminderTime = stateRows[0]?.state?.reminderTime || "8:00 AM";
-    const { hour, minute } = parseReminderTime(reminderTime);
+    await ensureTables(db);
 
     const tz = process.env.REMINDER_TIMEZONE || DEFAULT_TIMEZONE;
     const now = nowParts(tz);
-    if (now.hour !== hour || now.minute !== minute) {
-      return Response.json({ ok: true, skipped: true, reason: "not_reminder_minute", now, reminderTime, tz });
-    }
 
-    const alreadySent = await db`SELECT date_key FROM push_dispatch_log WHERE date_key = ${now.dateKey} LIMIT 1;`;
-    if (alreadySent.length > 0) {
-      return Response.json({ ok: true, skipped: true, reason: "already_sent_today", dateKey: now.dateKey });
-    }
-
-    const subs = await db`SELECT endpoint, subscription FROM push_subscriptions;`;
     const payload = JSON.stringify({
-      title: "Unshaken reminder",
+      title: "stoic as fuck reminder",
       body: "Quick check-in: open your daily reflection and prep your response before life throws it at you.",
       url: process.env.APP_URL || "https://unshaken.vercel.app"
     });
 
+    const subs = await db`
+      SELECT endpoint, subscription, user_id FROM push_subscriptions
+      WHERE COALESCE(user_id, '') != '';
+    `;
+
     let sent = 0;
     let removed = 0;
+    let skippedNotMinute = 0;
+    let skippedAlready = 0;
+
     for (const row of subs) {
+      const stateRows = await db`
+        SELECT state FROM resilience_user_state WHERE user_id = ${row.user_id} LIMIT 1;
+      `;
+      const reminderTime = stateRows[0]?.state?.reminderTime || "8:00 AM";
+      const { hour, minute } = parseReminderTime(reminderTime);
+      if (now.hour !== hour || now.minute !== minute) {
+        skippedNotMinute += 1;
+        continue;
+      }
+
+      const alreadySent = await db`
+        SELECT 1 FROM user_push_dispatch_log
+        WHERE user_id = ${row.user_id} AND date_key = ${now.dateKey}
+        LIMIT 1;
+      `;
+      if (alreadySent.length > 0) {
+        skippedAlready += 1;
+        continue;
+      }
+
       try {
         await webpush.sendNotification(row.subscription, payload);
         sent += 1;
+        await db`
+          INSERT INTO user_push_dispatch_log (user_id, date_key, sent_at)
+          VALUES (${row.user_id}, ${now.dateKey}, NOW())
+          ON CONFLICT (user_id, date_key) DO NOTHING;
+        `;
       } catch (error) {
         const status = error?.statusCode;
         if (status === 404 || status === 410) {
           await db`DELETE FROM push_subscriptions WHERE endpoint = ${row.endpoint};`;
           removed += 1;
+        } else {
+          console.error("webpush failed", error);
         }
       }
     }
 
-    await db`
-      INSERT INTO push_dispatch_log (date_key, sent_at)
-      VALUES (${now.dateKey}, NOW())
-      ON CONFLICT (date_key) DO NOTHING;
-    `;
-
-    return Response.json({ ok: true, sent, removed, dateKey: now.dateKey, reminderTime, tz });
+    return Response.json({
+      ok: true,
+      sent,
+      removed,
+      dateKey: now.dateKey,
+      tz,
+      subs: subs.length,
+      skippedNotMinute,
+      skippedAlready
+    });
   } catch (error) {
     console.error(error);
     return Response.json({ ok: false, error: "dispatch_failed" }, { status: 500 });

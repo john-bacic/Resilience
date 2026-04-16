@@ -1,4 +1,4 @@
-# Unshaken (Resilience App)
+# stoic as fuck (Resilience App)
 
 Next.js app for daily resilience training with a 30-day flow:
 

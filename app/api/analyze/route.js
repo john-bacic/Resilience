@@ -1,3 +1,5 @@
+import { requireAuthUserId } from "@/lib/require-auth";
+
 const step1Patterns = [
   "they think",
   "this means",
@@ -42,6 +44,9 @@ function fallbackAnalysis(entryText) {
 }
 
 export async function POST(request) {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+
   try {
     const body = await request.json();
     const entryText = String(body?.entryText || "").trim();

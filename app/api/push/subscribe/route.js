@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
+import { requireAuthUserId } from "@/lib/require-auth";
 
-async function ensurePushTable() {
-  const db = getDb();
+async function ensurePushTable(db) {
   await db`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       endpoint TEXT PRIMARY KEY,
@@ -9,6 +9,7 @@ async function ensurePushTable() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `;
+  await db`ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS user_id TEXT;`;
 }
 
 function hasDatabaseConfig() {
@@ -16,6 +17,10 @@ function hasDatabaseConfig() {
 }
 
 export async function POST(request) {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+  const { userId } = authResult;
+
   try {
     const body = await request.json();
     const subscription = body?.subscription;
@@ -28,13 +33,14 @@ export async function POST(request) {
       return Response.json({ ok: true, source: "memory" });
     }
 
-    await ensurePushTable();
     const db = getDb();
+    await ensurePushTable(db);
     await db`
-      INSERT INTO push_subscriptions (endpoint, subscription, created_at)
-      VALUES (${endpoint}, ${JSON.stringify(subscription)}::jsonb, NOW())
+      INSERT INTO push_subscriptions (endpoint, user_id, subscription, created_at)
+      VALUES (${endpoint}, ${userId}, ${JSON.stringify(subscription)}::jsonb, NOW())
       ON CONFLICT (endpoint) DO UPDATE
-      SET subscription = EXCLUDED.subscription,
+      SET user_id = EXCLUDED.user_id,
+          subscription = EXCLUDED.subscription,
           created_at = NOW();
     `;
 
@@ -46,6 +52,10 @@ export async function POST(request) {
 }
 
 export async function DELETE(request) {
+  const authResult = await requireAuthUserId();
+  if ("response" in authResult) return authResult.response;
+  const { userId } = authResult;
+
   try {
     const body = await request.json();
     const endpoint = String(body?.endpoint || "");
@@ -57,9 +67,12 @@ export async function DELETE(request) {
       return Response.json({ ok: true, source: "memory" });
     }
 
-    await ensurePushTable();
     const db = getDb();
-    await db`DELETE FROM push_subscriptions WHERE endpoint = ${endpoint};`;
+    await ensurePushTable(db);
+    await db`
+      DELETE FROM push_subscriptions
+      WHERE endpoint = ${endpoint} AND (user_id = ${userId} OR user_id IS NULL);
+    `;
 
     return Response.json({ ok: true });
   } catch (error) {
