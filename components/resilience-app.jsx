@@ -1610,6 +1610,7 @@ export default function ResilienceApp() {
                           min={dateKeyYearsAgo(5)}
                           max={todayDateKey}
                           onChange={(e) => setLogEntryDateKey(e.target.value || todayDateKey)}
+                          className="max-w-[320px] sm:max-w-[360px] md:max-w-none"
                         />
                         {logEntryDateKey !== todayDateKey && logEntryPreviewDay != null && (
                           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1621,7 +1622,7 @@ export default function ResilienceApp() {
                         value={eventText}
                         onChange={(e) => setEventText(e.target.value)}
                         placeholder="My friend canceled and now I feel rejected."
-                        className="min-h-[180px]"
+                        className="min-h-[180px] max-w-[320px] sm:max-w-[360px] md:max-w-none"
                       />
                       <Button onClick={analyzeEvent} disabled={!eventText.trim() || isAnalyzing}>
                         {isAnalyzing ? "Analyzing..." : "Analyze entry"}
