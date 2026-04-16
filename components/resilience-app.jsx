@@ -1064,6 +1064,12 @@ export default function ResilienceApp() {
     [app.diary]
   );
 
+  /** Log tab only: show diary block when at least one entry exists for today (calendar date). */
+  const diaryEntriesTodayForLogTab = useMemo(
+    () => diaryEntriesSorted.filter((entry) => diaryEntryDateKey(entry) === todayDateKey),
+    [diaryEntriesSorted, todayDateKey]
+  );
+
   const progressDiaryEntries = useMemo(() => {
     if (!selectedProgressDate) return diaryEntriesSorted;
     return diaryEntriesSorted.filter((entry) => {
@@ -1938,61 +1944,57 @@ export default function ResilienceApp() {
                   </Card>
                 </div>
 
-                <Card>
-                  <CardHeader>
-                    <SectionTitle icon={BookOpen} title="Diary" subtitle="Your logged events in one place." />
-                  </CardHeader>
-                  <CardContent>
-                    {diaryEntriesSorted.length === 0 ? (
-                      <div className="rounded-3xl bg-slate-50 p-8 text-center text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        No diary entries yet.
-                      </div>
-                    ) : (
+                {diaryEntriesTodayForLogTab.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <SectionTitle icon={BookOpen} title="Diary" subtitle="Today's entries." />
+                    </CardHeader>
+                    <CardContent>
                       <div className="grid gap-4">
-                        {diaryEntriesSorted.map((entry) => {
+                        {diaryEntriesTodayForLogTab.map((entry) => {
                           const entryProgramDay = diaryEntryProgramDayDisplay(programAnchorKey, entry);
                           return (
-                          <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                            <div>
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
-                                {diarySourceLabel(entry)}
-                              </p>
-                              <h3 className="mt-1 whitespace-pre-wrap break-words text-lg font-semibold leading-snug text-slate-900 dark:text-slate-100">
-                                {diaryTitleDisplay(entry)}
-                              </h3>
-                              <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {entry.loggedDateKey
-                                  ? formatDateKeyDisplay(entry.loggedDateKey)
-                                  : new Date(entry.createdAt).toLocaleDateString()}
-                                {entryProgramDay != null ? ` · Day ${entryProgramDay}` : ""}
-                              </p>
+                            <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
+                                  {diarySourceLabel(entry)}
+                                </p>
+                                <h3 className="mt-1 whitespace-pre-wrap break-words text-lg font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                                  {diaryTitleDisplay(entry)}
+                                </h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                  {entry.loggedDateKey
+                                    ? formatDateKeyDisplay(entry.loggedDateKey)
+                                    : new Date(entry.createdAt).toLocaleDateString()}
+                                  {entryProgramDay != null ? ` · Day ${entryProgramDay}` : ""}
+                                </p>
+                              </div>
+                              {entry.scenario && entry.source !== "reflection" && (
+                                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
+                                  {entry.scenario}
+                                </p>
+                              )}
+                              {entry.moodBefore != null && entry.moodAfter != null && (
+                                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                                  Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
+                                </p>
+                              )}
+                              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
+                              <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
+                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
+                                  Edit
+                                </Button>
+                                <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
+                                  Delete
+                                </Button>
+                              </div>
                             </div>
-                            {entry.scenario && entry.source !== "reflection" && (
-                              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
-                                {entry.scenario}
-                              </p>
-                            )}
-                            {entry.moodBefore != null && entry.moodAfter != null && (
-                              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                                Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
-                              </p>
-                            )}
-                            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
-                            <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
-                              <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
-                                Edit
-                              </Button>
-                              <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
                           );
                         })}
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             )}
 
