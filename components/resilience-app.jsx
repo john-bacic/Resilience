@@ -696,7 +696,7 @@ export default function ResilienceApp() {
         const now = new Date();
         if (now.getHours() === targetHour && now.getMinutes() === targetMinute) {
           if (localStorage.getItem(key) === "shown") return;
-          new Notification("stoic as fuck reminder", {
+          new Notification("stoic as phuq reminder", {
             body: "Quick check-in: do your morning reflection before the day runs away."
           });
           localStorage.setItem(key, "shown");
@@ -1285,7 +1285,7 @@ export default function ResilienceApp() {
                     <StoicMarkIcon className="h-[33px] w-[29px]" />
                   </div>
                   <div className="min-w-0">
-                    <CardTitle>stoic as fuck</CardTitle>
+                    <CardTitle>stoic as phuq</CardTitle>
                     <CardDescription>30-day resilience</CardDescription>
                   </div>
                 </div>

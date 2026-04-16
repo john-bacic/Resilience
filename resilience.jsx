@@ -444,7 +444,7 @@ export default function ResilienceMVPApp() {
                 <Shield className="h-5 w-5" />
               </div>
               <div>
-                <CardTitle>stoic as fuck</CardTitle>
+                <CardTitle>stoic as phuq</CardTitle>
                 <CardDescription>30-day resilience MVP</CardDescription>
               </div>
             </div>

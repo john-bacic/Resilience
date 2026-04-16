@@ -109,7 +109,7 @@ export async function GET(request) {
     const now = nowParts(tz);
 
     const payload = JSON.stringify({
-      title: "stoic as fuck reminder",
+      title: "stoic as phuq reminder",
       body: "Quick check-in: open your daily reflection and prep your response before life throws it at you.",
       url: process.env.APP_URL || "https://unshaken.vercel.app"
     });

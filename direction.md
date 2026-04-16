@@ -173,7 +173,7 @@ That keeps it practical instead of overwhelming.
 ## Name ideas
 
 - Control
-- stoic as fuck
+- stoic as phuq
 - Stoic Diary
 - Scenario
 - Armor

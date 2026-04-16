@@ -6,7 +6,7 @@ import "./globals.css";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "stoic as fuck",
+  title: "stoic as phuq",
   description: "30-day resilience training app",
   manifest: "/manifest.webmanifest"
 };

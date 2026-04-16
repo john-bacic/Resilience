@@ -1,4 +1,4 @@
-# stoic as fuck (Resilience App)
+# stoic as phuq (Resilience App)
 
 Next.js app for daily resilience training with a 30-day flow:
 
