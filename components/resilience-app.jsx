@@ -197,6 +197,27 @@ function progressFieldsFromDiary(diary) {
   };
 }
 
+/** Newest calendar day first (logged date / entry date); same day → most recently created first. */
+function sortDiaryEntriesByCalendarNewestFirst(entries) {
+  if (!Array.isArray(entries)) return [];
+  return [...entries].sort((a, b) => {
+    const ka = diaryEntryDateKey(a) || "";
+    const kb = diaryEntryDateKey(b) || "";
+    if (ka !== kb) return kb.localeCompare(ka);
+    const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  });
+}
+
+/** Day N in diary UI: 1 = anchor (first diary date), from entry calendar date. */
+function diaryEntryProgramDayDisplay(anchorKey, entry) {
+  if (!anchorKey || !entry) return null;
+  const dk = diaryEntryDateKey(entry);
+  if (!dk) return null;
+  return programDayForEntry(anchorKey, dk);
+}
+
 function formatDateKeyDisplay(dateKey) {
   const [y, m, d] = String(dateKey).split("-").map(Number);
   if (!y || !m || !d) return "";
@@ -1038,6 +1059,23 @@ export default function ResilienceApp() {
     [logEntryPreviewStart, logEntryDateKey]
   );
 
+  const diaryEntriesSorted = useMemo(
+    () => sortDiaryEntriesByCalendarNewestFirst(app.diary),
+    [app.diary]
+  );
+
+  const progressDiaryEntries = useMemo(() => {
+    if (!selectedProgressDate) return diaryEntriesSorted;
+    return diaryEntriesSorted.filter((entry) => {
+      if (entry.loggedDateKey) return entry.loggedDateKey === selectedProgressDate;
+      const entryDate = new Date(entry.createdAt);
+      const entryKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}-${String(
+        entryDate.getDate()
+      ).padStart(2, "0")}`;
+      return entryKey === selectedProgressDate;
+    });
+  }, [diaryEntriesSorted, selectedProgressDate]);
+
   async function loadDailyScenario(profileOverride) {
     try {
       setIsRefreshingScenario(true);
@@ -1548,17 +1586,6 @@ export default function ResilienceApp() {
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
   ];
 
-  const progressDiaryEntries = selectedProgressDate
-    ? app.diary.filter((entry) => {
-        if (entry.loggedDateKey) return entry.loggedDateKey === selectedProgressDate;
-        const entryDate = new Date(entry.createdAt);
-        const entryKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}-${String(
-          entryDate.getDate()
-        ).padStart(2, "0")}`;
-        return entryKey === selectedProgressDate;
-      })
-    : app.diary;
-
   const profileDraftComputedAge = calculateAgeFromBirthday(profileDraft.birthday);
 
   function toggleFocusPanel() {
@@ -1916,13 +1943,15 @@ export default function ResilienceApp() {
                     <SectionTitle icon={BookOpen} title="Diary" subtitle="Your logged events in one place." />
                   </CardHeader>
                   <CardContent>
-                    {app.diary.length === 0 ? (
+                    {diaryEntriesSorted.length === 0 ? (
                       <div className="rounded-3xl bg-slate-50 p-8 text-center text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                         No diary entries yet.
                       </div>
                     ) : (
                       <div className="grid gap-4">
-                        {app.diary.map((entry) => (
+                        {diaryEntriesSorted.map((entry) => {
+                          const entryProgramDay = diaryEntryProgramDayDisplay(programAnchorKey, entry);
+                          return (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
                             <div>
                               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
@@ -1935,7 +1964,7 @@ export default function ResilienceApp() {
                                 {entry.loggedDateKey
                                   ? formatDateKeyDisplay(entry.loggedDateKey)
                                   : new Date(entry.createdAt).toLocaleDateString()}
-                                {entry.day != null ? ` · Day ${entry.day}` : ""}
+                                {entryProgramDay != null ? ` · Day ${entryProgramDay}` : ""}
                               </p>
                             </div>
                             {entry.scenario && entry.source !== "reflection" && (
@@ -1958,7 +1987,8 @@ export default function ResilienceApp() {
                               </Button>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </CardContent>
@@ -2085,7 +2115,9 @@ export default function ResilienceApp() {
                       </div>
                     ) : (
                       <div className="grid gap-4">
-                        {progressDiaryEntries.map((entry) => (
+                        {progressDiaryEntries.map((entry) => {
+                          const entryProgramDay = diaryEntryProgramDayDisplay(programAnchorKey, entry);
+                          return (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
                             <div>
                               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
@@ -2098,7 +2130,7 @@ export default function ResilienceApp() {
                                 {entry.loggedDateKey
                                   ? formatDateKeyDisplay(entry.loggedDateKey)
                                   : new Date(entry.createdAt).toLocaleDateString()}
-                                {entry.day != null ? ` · Day ${entry.day}` : ""}
+                                {entryProgramDay != null ? ` · Day ${entryProgramDay}` : ""}
                               </p>
                             </div>
                             {entry.scenario && entry.source !== "reflection" && (
@@ -2121,7 +2153,8 @@ export default function ResilienceApp() {
                               </Button>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </CardContent>
