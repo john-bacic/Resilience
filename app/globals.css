@@ -41,3 +41,13 @@ body {
 .reaction-border-loop:focus {
   animation: none;
 }
+
+/* iOS Safari: left-align date text and keep it inside the allotted width */
+input[type="date"] {
+  width: 100%;
+  text-align: left;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+}
