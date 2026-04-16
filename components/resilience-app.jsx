@@ -567,7 +567,6 @@ function AiBadgeIcon() {
 export default function ResilienceApp() {
   const [app, setApp] = useState(DEFAULT_STATE);
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("home");
   const [isFocusOpen, setIsFocusOpen] = useState(true);
@@ -876,10 +875,6 @@ export default function ResilienceApp() {
         if (error?.name !== "AbortError") console.error(error);
       } finally {
         clearTimeout(timeoutId);
-        // Always clear loading: Strict Mode runs cleanup (cancelled=true) before the first
-        // fetch settles; gating on `cancelled` here can skip setLoading(false) and leave
-        // the UI stuck if the follow-up request never completes. `setApp` stays guarded above.
-        setLoading(false);
       }
     }
 
@@ -887,17 +882,7 @@ export default function ResilienceApp() {
     return () => {
       cancelled = true;
       controller.abort();
-      // Strict Mode / fast remount: unblock UI even if this effect’s fetch hasn’t hit `finally` yet.
-      setLoading(false);
     };
-  }, []);
-
-  /** Never stay on the loading screen forever (chunk stalls, hung fetch, Strict Mode races). */
-  useEffect(() => {
-    const maxWait = window.setTimeout(() => {
-      setLoading(false);
-    }, 10000);
-    return () => window.clearTimeout(maxWait);
   }, []);
 
   const todayDateKey = toDateKey(new Date());
@@ -945,10 +930,8 @@ export default function ResilienceApp() {
   }
 
   useEffect(() => {
-    if (!loading) {
-      void loadDailyScenario();
-    }
-  }, [currentProgramDay, loading]);
+    void loadDailyScenario();
+  }, [currentProgramDay]);
 
   const todayScenario = useMemo(
     () => dailyScenario || scenarioForDay(currentProgramDay),
@@ -1403,12 +1386,8 @@ export default function ResilienceApp() {
     });
   }
 
-  if (loading) {
-    return <div className="p-10 text-center text-slate-600 dark:text-slate-300">Loading your resilience app...</div>;
-  }
-
   return (
-    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-100 p-4 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:p-8">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-100 px-4 pb-4 pt-2 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:px-8 md:pb-8 md:pt-3">
       <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <Card className="min-w-0">
           <CardContent className="space-y-3 pt-6">

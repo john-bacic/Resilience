@@ -7,7 +7,7 @@ export default function ClerkHeader() {
   const { isSignedIn, isLoaded } = useAuth();
 
   return (
-    <header className="flex min-h-[48px] items-center justify-end gap-2 border-b border-slate-200 bg-white/90 px-4 py-2 dark:border-slate-800 dark:bg-slate-950/90">
+    <header className="flex min-h-[48px] items-center justify-end gap-2 bg-slate-100 px-4 py-2 md:px-8 dark:bg-slate-950">
       {!isLoaded ? (
         <div className="h-8 w-24 animate-pulse rounded-lg bg-slate-200/80 dark:bg-slate-800" aria-hidden />
       ) : isSignedIn ? (

@@ -15,13 +15,30 @@ const isPublicRoute = createRouteMatcher([
   "/api/push/dispatch(.*)"
 ]);
 
+/** Never run Clerk on Next internals or dev overlay — avoids rare matcher misses breaking CSS/JS. */
+function isNextInternalPath(pathname: string) {
+  return (
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/__nextjs") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js"
+  );
+}
+
 const hasClerkPublishableKey = Boolean(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 );
 
+/** Local dev: set in `.env.local` so `/` loads without signing in (API may still 401 until signed in). */
+const skipAuthProtect = process.env.SKIP_CLERK_PROTECT === "true";
+
 export default hasClerkPublishableKey
   ? clerkMiddleware(async (auth, req) => {
-      if (!isPublicRoute(req)) {
+      if (isNextInternalPath(req.nextUrl.pathname)) {
+        return NextResponse.next();
+      }
+      if (!isPublicRoute(req) && !skipAuthProtect) {
         await auth.protect();
       }
     })
