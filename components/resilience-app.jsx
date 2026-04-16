@@ -322,6 +322,13 @@ function formatMoodPair(before, after) {
   return `${formatMoodValue(before)} → ${formatMoodValue(after)}`;
 }
 
+/** Map a 1–12 ordinal (can be fractional) to the nearest MOOD_OPTIONS entry. */
+function moodOptionFromOrdinal(ordinal) {
+  if (ordinal == null || Number.isNaN(ordinal)) return null;
+  const idx = Math.min(MOOD_OPTIONS.length - 1, Math.max(0, Math.round(ordinal) - 1));
+  return MOOD_OPTIONS[idx];
+}
+
 /** Scrollable mood list for use inside the log-entry modal. */
 function MoodOptionList({ value, onSelect }) {
   const selectedId = normalizeMoodId(value);
@@ -1006,22 +1013,44 @@ export default function ResilienceApp() {
     const topStep = Object.entries(stepCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "step1";
     let moodShiftSum = 0;
     let moodShiftCount = 0;
+    let sumBeforeOrd = 0;
+    let sumAfterOrd = 0;
     app.diary.forEach((entry) => {
       if (entry.moodBefore == null || entry.moodAfter == null) return;
       const a = moodOrdinalUnified(entry.moodBefore);
       const b = moodOrdinalUnified(entry.moodAfter);
       if (a == null || b == null) return;
+      sumBeforeOrd += a;
+      sumAfterOrd += b;
       moodShiftSum += b - a;
       moodShiftCount += 1;
     });
-    const averageShift = moodShiftCount === 0 ? "0.0" : (moodShiftSum / moodShiftCount).toFixed(1);
+    const averageShift =
+      moodShiftCount === 0 ? "0.0" : (moodShiftSum / moodShiftCount).toFixed(1);
+    let averageShiftLabel = "—";
+    if (moodShiftCount > 0) {
+      const avgB = sumBeforeOrd / moodShiftCount;
+      const avgA = sumAfterOrd / moodShiftCount;
+      const optB = moodOptionFromOrdinal(avgB);
+      const optA = moodOptionFromOrdinal(avgA);
+      if (optB && optA) {
+        averageShiftLabel = `${optB.emoji} ${optB.label} → ${optA.emoji} ${optA.label}`;
+      }
+    }
     const storyCounts = {};
     app.diary.forEach((entry) => {
       const key = entry.story?.trim();
       if (key) storyCounts[key] = (storyCounts[key] || 0) + 1;
     });
     const topStory = Object.entries(storyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "No dominant story yet.";
-    return { total, topStep, averageShift, topStory };
+    return {
+      total,
+      topStep,
+      averageShift,
+      averageShiftLabel,
+      moodShiftSampleCount: moodShiftCount,
+      topStory,
+    };
   }, [app.diary]);
 
   const weeklySummary = useMemo(() => {
@@ -1904,7 +1933,20 @@ export default function ResilienceApp() {
                       </div>
                       <p className="text-sm text-slate-700 dark:text-slate-300">Entries: {diaryStats.total}</p>
                       <p className="text-sm text-slate-700 dark:text-slate-300">Most triggered: {diaryStats.topStep}</p>
-                      <p className="text-sm text-slate-700 dark:text-slate-300">Average mood shift: {diaryStats.averageShift}</p>
+                      <p
+                        className="text-sm text-slate-700 dark:text-slate-300"
+                        title={
+                          diaryStats.moodShiftSampleCount > 0
+                            ? `Average step change on 1–12 mood scale: ${
+                                Number(diaryStats.averageShift) >= 0 ? "+" : ""
+                              }${diaryStats.averageShift} (${diaryStats.moodShiftSampleCount} ${
+                                diaryStats.moodShiftSampleCount === 1 ? "entry" : "entries"
+                              })`
+                            : undefined
+                        }
+                      >
+                        Average mood shift: {diaryStats.averageShiftLabel}
+                      </p>
                       <p className="text-sm text-slate-700 dark:text-slate-300">Most common story: {diaryStats.topStory}</p>
                     </CardContent>
                   </Card>
