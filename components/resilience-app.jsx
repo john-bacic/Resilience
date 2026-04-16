@@ -1368,7 +1368,7 @@ export default function ResilienceApp() {
 
   return (
     <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-100 p-4 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:p-8">
-      <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+      <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <Card className="min-w-0">
           <CardContent className="space-y-3 pt-6">
             <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
