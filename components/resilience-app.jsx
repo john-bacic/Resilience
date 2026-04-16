@@ -147,6 +147,56 @@ function programDayForEntry(startDateKey, entryDateKey) {
   return Math.max(1, Math.min(30, diffDays));
 }
 
+/** Calendar key for a diary row: logged date for logs, else local date from `createdAt`. */
+function diaryEntryDateKey(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  if (entry.loggedDateKey) {
+    const k = String(entry.loggedDateKey).trim();
+    return k || null;
+  }
+  if (entry.createdAt) return toDateKey(new Date(entry.createdAt));
+  return null;
+}
+
+function earliestDiaryDateKey(diary) {
+  if (!Array.isArray(diary) || diary.length === 0) return null;
+  let min = null;
+  for (const e of diary) {
+    const k = diaryEntryDateKey(e);
+    if (!k) continue;
+    if (min == null || k < min) min = k;
+  }
+  return min;
+}
+
+/** Day 1 = first diary date when present; otherwise falls back to saved program start. */
+function programProgressAnchorKey(diary, startDateFallback) {
+  const fromDiary = earliestDiaryDateKey(diary);
+  return fromDiary ?? startDateFallback ?? null;
+}
+
+function maxProgramDayInDiary(diary, anchorKey) {
+  if (!anchorKey || !Array.isArray(diary) || diary.length === 0) return 0;
+  let max = 0;
+  for (const e of diary) {
+    const dk = diaryEntryDateKey(e);
+    if (!dk) continue;
+    const d = programDayForEntry(anchorKey, dk);
+    if (d != null) max = Math.max(max, d);
+  }
+  return max;
+}
+
+/** Recompute persisted start + completed-day stats from the diary list. */
+function progressFieldsFromDiary(diary) {
+  const anchor = earliestDiaryDateKey(diary);
+  const maxD = maxProgramDayInDiary(diary, anchor);
+  return {
+    startDate: anchor,
+    lastCompletedDay: maxD
+  };
+}
+
 function formatDateKeyDisplay(dateKey) {
   const [y, m, d] = String(dateKey).split("-").map(Number);
   if (!y || !m || !d) return "";
@@ -969,11 +1019,19 @@ export default function ResilienceApp() {
   }, []);
 
   const todayDateKey = toDateKey(new Date());
-  const currentProgramDay = useMemo(() => programDayFromStart(app.startDate), [app.startDate]);
+  const programAnchorKey = useMemo(
+    () => programProgressAnchorKey(app.diary, app.startDate),
+    [app.diary, app.startDate]
+  );
+  const currentProgramDay = useMemo(() => programDayFromStart(programAnchorKey), [programAnchorKey]);
   const logEntryPreviewStart = useMemo(
     () =>
-      app.startDate ? (logEntryDateKey < app.startDate ? logEntryDateKey : app.startDate) : logEntryDateKey,
-    [app.startDate, logEntryDateKey]
+      programAnchorKey
+        ? logEntryDateKey < programAnchorKey
+          ? logEntryDateKey
+          : programAnchorKey
+        : logEntryDateKey,
+    [programAnchorKey, logEntryDateKey]
   );
   const logEntryPreviewDay = useMemo(
     () => programDayForEntry(logEntryPreviewStart, logEntryDateKey),
@@ -1020,7 +1078,15 @@ export default function ResilienceApp() {
     () => dailyScenario || scenarioForDay(currentProgramDay),
     [currentProgramDay, dailyScenario]
   );
-  const completionPercent = useMemo(() => Math.round((app.lastCompletedDay / 30) * 100), [app.lastCompletedDay]);
+  const lastCompletedEffective = useMemo(
+    () =>
+      Math.max(app.lastCompletedDay, maxProgramDayInDiary(app.diary, programAnchorKey)),
+    [app.lastCompletedDay, app.diary, programAnchorKey]
+  );
+  const completionPercent = useMemo(
+    () => Math.round((lastCompletedEffective / 30) * 100),
+    [lastCompletedEffective]
+  );
   const diaryStats = useMemo(() => {
     const total = app.diary.length;
     const stepCounts = app.diary.reduce(
@@ -1140,16 +1206,15 @@ export default function ResilienceApp() {
 
   function saveReflection() {
     const scenarioText = (reflectionScenario || todayScenario || "").trim();
-    const entry = {
+    const createdAt = new Date().toISOString();
+    const reflectionEntryBase = {
       id: getRandomId(),
-      day: currentProgramDay,
       scenario: scenarioText,
       ...reflection,
-      createdAt: new Date().toISOString()
+      createdAt
     };
-    const diaryEntryFromReflection = {
+    const diaryEntryFromReflectionBase = {
       id: getRandomId(),
-      day: currentProgramDay,
       title: scenarioText || "Morning reflection",
       rawText: reflection.reaction || "",
       scenario: scenarioText,
@@ -1163,22 +1228,35 @@ export default function ResilienceApp() {
       lesson: reflection.intention || reflection.chosenResponse || "",
       moodBefore: null,
       moodAfter: null,
-      createdAt: new Date().toISOString()
+      createdAt
     };
-    setAndPersist((prev) => ({
-      ...prev,
-      reflections: [entry, ...prev.reflections],
-      diary: [diaryEntryFromReflection, ...prev.diary],
-      intentions: reflection.intention
-        ? [{ id: entry.id, text: reflection.intention, day: currentProgramDay }, ...prev.intentions]
-        : prev.intentions,
-      startDate: prev.startDate || todayDateKey,
-      lastCompletedDay: Math.max(prev.lastCompletedDay, currentProgramDay),
-      streak:
-        prev.lastCompletedDay === currentProgramDay - 1 || prev.lastCompletedDay === 0
-          ? prev.streak + 1
-          : prev.streak
-    }));
+    setAndPersist((prev) => {
+      const newDiary = [diaryEntryFromReflectionBase, ...prev.diary];
+      const anchor = programProgressAnchorKey(newDiary, prev.startDate);
+      const entryDateKey = diaryEntryDateKey(diaryEntryFromReflectionBase);
+      const safeAnchor = anchor ?? entryDateKey ?? todayDateKey;
+      const dayForEntry = programDayForEntry(safeAnchor, entryDateKey || todayDateKey) ?? 1;
+      const todayProgramDay = programDayFromStart(safeAnchor);
+
+      const entry = { ...reflectionEntryBase, day: dayForEntry };
+      const diaryEntryFromReflection = { ...diaryEntryFromReflectionBase, day: dayForEntry };
+      const pf = progressFieldsFromDiary([diaryEntryFromReflection, ...prev.diary]);
+
+      return {
+        ...prev,
+        reflections: [entry, ...prev.reflections],
+        diary: [diaryEntryFromReflection, ...prev.diary],
+        intentions: reflection.intention
+          ? [{ id: entry.id, text: reflection.intention, day: dayForEntry }, ...prev.intentions]
+          : prev.intentions,
+        startDate: pf.startDate,
+        lastCompletedDay: Math.max(pf.lastCompletedDay, todayProgramDay),
+        streak:
+          prev.lastCompletedDay === todayProgramDay - 1 || prev.lastCompletedDay === 0
+            ? prev.streak + 1
+            : prev.streak
+      };
+    });
     setReflectionOpen(false);
   }
 
@@ -1228,20 +1306,9 @@ export default function ResilienceApp() {
     if (analysis.step2) triggeredSteps.push("step2");
     if (analysis.step3) triggeredSteps.push("step3");
 
-    const nextStart = app.startDate
-      ? logEntryDateKey < app.startDate
-        ? logEntryDateKey
-        : app.startDate
-      : logEntryDateKey;
-    const dayForEntry = programDayForEntry(nextStart, logEntryDateKey);
-    if (dayForEntry == null) {
-      window.alert("That date is before your program start. Choose a later date.");
-      return;
-    }
-
-    const diaryEntry = {
+    const createdAt = new Date().toISOString();
+    const diaryEntryBase = {
       id: getRandomId(),
-      day: dayForEntry,
       loggedDateKey: logEntryDateKey,
       title: eventText.trim() || "Untitled entry",
       rawText: eventText,
@@ -1250,21 +1317,27 @@ export default function ResilienceApp() {
       ...eventForm,
       moodBefore: normalizeMoodId(eventForm.moodBefore),
       moodAfter: normalizeMoodId(eventForm.moodAfter),
-      createdAt: new Date().toISOString()
+      createdAt
     };
+    const anchor = programProgressAnchorKey([diaryEntryBase, ...app.diary], app.startDate) ?? logEntryDateKey;
+    const dayForEntry = programDayForEntry(anchor, logEntryDateKey);
+    if (dayForEntry == null) {
+      window.alert("That date is before your program start. Choose a later date.");
+      return;
+    }
+
+    const diaryEntry = { ...diaryEntryBase, day: dayForEntry };
     setAndPersist((prev) => {
-      const persistedNextStart = prev.startDate
-        ? logEntryDateKey < prev.startDate
-          ? logEntryDateKey
-          : prev.startDate
-        : logEntryDateKey;
-      const nextCompletedDay = Math.max(prev.lastCompletedDay, dayForEntry);
+      const newDiary = [diaryEntry, ...prev.diary];
+      const pf = progressFieldsFromDiary(newDiary);
+      const todayProgramDay = programDayFromStart(pf.startDate);
+      const nextCompleted = Math.max(pf.lastCompletedDay, todayProgramDay);
       return {
         ...prev,
-        startDate: persistedNextStart,
-        diary: [diaryEntry, ...prev.diary],
-        lastCompletedDay: nextCompletedDay,
-        streak: nextCompletedDay > 0 ? Math.max(prev.streak, 1) : prev.streak
+        diary: newDiary,
+        startDate: pf.startDate,
+        lastCompletedDay: nextCompleted,
+        streak: nextCompleted > 0 ? Math.max(prev.streak, 1) : prev.streak
       };
     });
     setEventText("");
@@ -1329,9 +1402,15 @@ export default function ResilienceApp() {
         deleteUndoTimerRef.current = null;
       }, 6000);
 
+      const nextDiary = prev.diary.filter((entry) => entry.id !== entryId);
+      const pf = progressFieldsFromDiary(nextDiary);
+      const todayBump =
+        nextDiary.length === 0 || !pf.startDate ? 0 : programDayFromStart(pf.startDate);
       return {
         ...prev,
-        diary: prev.diary.filter((entry) => entry.id !== entryId)
+        diary: nextDiary,
+        startDate: pf.startDate,
+        lastCompletedDay: Math.max(pf.lastCompletedDay, todayBump)
       };
     });
     if (editingDiaryId === entryId) {
@@ -1351,7 +1430,15 @@ export default function ResilienceApp() {
       const nextDiary = [...prev.diary];
       const safeIndex = Math.max(0, Math.min(index, nextDiary.length));
       nextDiary.splice(safeIndex, 0, entry);
-      return { ...prev, diary: nextDiary };
+      const pf = progressFieldsFromDiary(nextDiary);
+      const todayBump =
+        nextDiary.length === 0 || !pf.startDate ? 0 : programDayFromStart(pf.startDate);
+      return {
+        ...prev,
+        diary: nextDiary,
+        startDate: pf.startDate,
+        lastCompletedDay: Math.max(pf.lastCompletedDay, todayBump)
+      };
     });
     setLastDeletedDiaryEntry(null);
   }
@@ -1888,7 +1975,7 @@ export default function ResilienceApp() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-                        <span>{app.lastCompletedDay}/30 days complete</span>
+                        <span>{lastCompletedEffective}/30 days complete</span>
                         <span>{completionPercent}%</span>
                       </div>
                       <Progress value={completionPercent} />
