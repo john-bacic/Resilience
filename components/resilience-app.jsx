@@ -214,6 +214,93 @@ function clampMood(value) {
   return Math.max(1, Math.min(10, n));
 }
 
+/** Ordered mood list (label + emoji); ids are persisted on diary entries. */
+const MOOD_OPTIONS = [
+  { id: "calm", label: "Calm", emoji: "😌" },
+  { id: "centered", label: "Centered", emoji: "🙂" },
+  { id: "focused", label: "Focused", emoji: "🎯" },
+  { id: "energized", label: "Energized", emoji: "⚡" },
+  { id: "reflective", label: "Reflective", emoji: "🤔" },
+  { id: "resilient", label: "Resilient", emoji: "🛡️" },
+  { id: "anxious", label: "Anxious", emoji: "😰" },
+  { id: "overwhelmed", label: "Overwhelmed", emoji: "😵" },
+  { id: "irritated", label: "Irritated", emoji: "😤" },
+  { id: "discouraged", label: "Discouraged", emoji: "😞" },
+  { id: "uncertain", label: "Uncertain", emoji: "😕" },
+  { id: "drained", label: "Drained", emoji: "🥱" }
+];
+
+/** Map legacy 1–10 scale onto the 12 mood slots (for old saved entries / state). */
+function legacyNumberToMoodId(n) {
+  const c = clampMood(n);
+  const idx = Math.round(((c - 1) / 9) * 11);
+  return MOOD_OPTIONS[Math.min(Math.max(idx, 0), MOOD_OPTIONS.length - 1)].id;
+}
+
+function normalizeMoodId(value) {
+  if (typeof value === "string" && MOOD_OPTIONS.some((m) => m.id === value)) return value;
+  if (typeof value === "number") return legacyNumberToMoodId(value);
+  return MOOD_OPTIONS[0].id;
+}
+
+/** Map legacy 1–10 numeric moods onto a 1–12 scale for trend stats. */
+function legacyToUnifiedOrdinal(n) {
+  const c = clampMood(n);
+  return Math.round(1 + (c - 1) * (11 / 9));
+}
+
+function moodOrdinalUnified(stored) {
+  if (stored == null) return null;
+  if (typeof stored === "number") return legacyToUnifiedOrdinal(stored);
+  const i = MOOD_OPTIONS.findIndex((m) => m.id === stored);
+  return i >= 0 ? i + 1 : null;
+}
+
+function formatMoodValue(stored) {
+  if (stored == null) return "";
+  if (typeof stored === "number") return `${clampMood(stored)}/10`;
+  const opt = MOOD_OPTIONS.find((m) => m.id === stored);
+  return opt ? `${opt.emoji} ${opt.label}` : String(stored);
+}
+
+function formatMoodPair(before, after) {
+  return `${formatMoodValue(before)} → ${formatMoodValue(after)}`;
+}
+
+/** Scrollable mood list for use inside the log-entry modal. */
+function MoodOptionList({ value, onSelect }) {
+  const selectedId = normalizeMoodId(value);
+  return (
+    <div
+      className="max-h-[min(60vh,24rem)] space-y-2 overflow-y-auto pr-0.5"
+      role="listbox"
+    >
+      {MOOD_OPTIONS.map((m) => {
+        const isOn = selectedId === m.id;
+        return (
+          <button
+            key={m.id}
+            type="button"
+            role="option"
+            aria-selected={isOn}
+            onClick={() => onSelect(m.id)}
+            className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:focus-visible:ring-slate-500 ${
+              isOn
+                ? "border-emerald-600 bg-emerald-50 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-50"
+                : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+            }`}
+          >
+            <span>{m.label}</span>
+            <span className="text-xl leading-none" aria-hidden>
+              {m.emoji}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function detectSteps(text) {
   const normalized = String(text || "").toLowerCase();
   const step1Patterns = [
@@ -461,6 +548,8 @@ export default function ResilienceApp() {
   const [isRefreshingScenario, setIsRefreshingScenario] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [isMoodModalOpen, setIsMoodModalOpen] = useState(false);
+  /** "before" | "after" when picking mood for log / diary save flow */
+  const [logMoodPicker, setLogMoodPicker] = useState(null);
   const [reminderDraft, setReminderDraft] = useState("08:00");
   const [isPrefillingReflection, setIsPrefillingReflection] = useState(false);
   const [selectedProgressDate, setSelectedProgressDate] = useState(null);
@@ -506,8 +595,8 @@ export default function ResilienceApp() {
     insideControl: "",
     chosenResponse: "",
     lesson: "",
-    moodBefore: 4,
-    moodAfter: 6
+    moodBefore: "reflective",
+    moodAfter: "centered"
   });
   const [logEntryDateKey, setLogEntryDateKey] = useState(() => toDateKey(new Date()));
 
@@ -839,13 +928,17 @@ export default function ResilienceApp() {
       { step1: 0, step2: 0, step3: 0 }
     );
     const topStep = Object.entries(stepCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "step1";
-    const averageShift =
-      total === 0
-        ? 0
-        : (
-            app.diary.reduce((sum, entry) => sum + (Number(entry.moodAfter) - Number(entry.moodBefore)), 0) /
-            total
-          ).toFixed(1);
+    let moodShiftSum = 0;
+    let moodShiftCount = 0;
+    app.diary.forEach((entry) => {
+      if (entry.moodBefore == null || entry.moodAfter == null) return;
+      const a = moodOrdinalUnified(entry.moodBefore);
+      const b = moodOrdinalUnified(entry.moodAfter);
+      if (a == null || b == null) return;
+      moodShiftSum += b - a;
+      moodShiftCount += 1;
+    });
+    const averageShift = moodShiftCount === 0 ? "0.0" : (moodShiftSum / moodShiftCount).toFixed(1);
     const storyCounts = {};
     app.diary.forEach((entry) => {
       const key = entry.story?.trim();
@@ -1028,8 +1121,8 @@ export default function ResilienceApp() {
       source: "log",
       triggeredSteps,
       ...eventForm,
-      moodBefore: clampMood(eventForm.moodBefore),
-      moodAfter: clampMood(eventForm.moodAfter),
+      moodBefore: normalizeMoodId(eventForm.moodBefore),
+      moodAfter: normalizeMoodId(eventForm.moodAfter),
       createdAt: new Date().toISOString()
     };
     setAndPersist((prev) => {
@@ -1531,21 +1624,37 @@ export default function ResilienceApp() {
                             onChange={(e) => setEventForm((prev) => ({ ...prev, lesson: e.target.value }))}
                             placeholder="Lesson"
                           />
-                          <div className="grid grid-cols-2 gap-3">
-                            <Input
-                              type="number"
-                              min={1}
-                              max={10}
-                              value={eventForm.moodBefore}
-                              onChange={(e) => setEventForm((prev) => ({ ...prev, moodBefore: e.target.value }))}
-                            />
-                            <Input
-                              type="number"
-                              min={1}
-                              max={10}
-                              value={eventForm.moodAfter}
-                              onChange={(e) => setEventForm((prev) => ({ ...prev, moodAfter: e.target.value }))}
-                            />
+                          <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-800/60">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mood</p>
+                            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                              Tap Before or After, then choose in the modal.
+                            </p>
+                            <div className="mt-3 grid grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setLogMoodPicker("before")}
+                                className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                              >
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  Before
+                                </span>
+                                <span className="mt-1 block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {formatMoodValue(eventForm.moodBefore)}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setLogMoodPicker("after")}
+                                className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                              >
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  After
+                                </span>
+                                <span className="mt-1 block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {formatMoodValue(eventForm.moodAfter)}
+                                </span>
+                              </button>
+                            </div>
                           </div>
                           <Button className="w-full" onClick={saveEventEntry}>
                             Save to diary
@@ -1590,9 +1699,9 @@ export default function ResilienceApp() {
                             {entry.scenario && (
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
                             )}
-                            {entry.moodBefore !== null && entry.moodAfter !== null && (
+                            {entry.moodBefore != null && entry.moodAfter != null && (
                               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                                Mood {entry.moodBefore} to {entry.moodAfter}
+                                Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
                               </p>
                             )}
                             <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
@@ -1738,9 +1847,9 @@ export default function ResilienceApp() {
                             {entry.scenario && (
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
                             )}
-                            {entry.moodBefore !== null && entry.moodAfter !== null && (
+                            {entry.moodBefore != null && entry.moodAfter != null && (
                               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                                Mood {entry.moodBefore} to {entry.moodAfter}
+                                Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
                               </p>
                             )}
                             <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
@@ -1928,6 +2037,46 @@ export default function ResilienceApp() {
                   Cancel
                 </Button>
                 <Button onClick={saveReminderTime}>Save</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {logMoodPicker && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4"
+          onClick={() => setLogMoodPicker(null)}
+          role="presentation"
+        >
+          <Card
+            className="max-h-[90vh] w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader>
+              <CardTitle>Choose current mood</CardTitle>
+              <CardDescription>
+                {logMoodPicker === "before"
+                  ? "Before — how you felt when it happened. This tunes your state label for this entry."
+                  : "After — how you feel after working through this."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <MoodOptionList
+                value={logMoodPicker === "before" ? eventForm.moodBefore : eventForm.moodAfter}
+                onSelect={(id) => {
+                  setEventForm((prev) =>
+                    logMoodPicker === "before"
+                      ? { ...prev, moodBefore: id }
+                      : { ...prev, moodAfter: id }
+                  );
+                  setLogMoodPicker(null);
+                }}
+              />
+              <div className="flex justify-end pt-2">
+                <Button variant="outline" onClick={() => setLogMoodPicker(null)}>
+                  Close
+                </Button>
               </div>
             </CardContent>
           </Card>
