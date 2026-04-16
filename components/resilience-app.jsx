@@ -2001,6 +2001,7 @@ export default function ResilienceApp() {
         )}
       </div>
       <div className="mx-auto mt-2 max-w-7xl text-center text-xs text-slate-400 dark:text-slate-500">
+        <div>for Sean</div>
         {latestCommit ? (
           latestCommitUrl ? (
             <a
