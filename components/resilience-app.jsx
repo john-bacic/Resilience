@@ -266,8 +266,18 @@ function legacyNumberToMoodId(n) {
 }
 
 function normalizeMoodId(value) {
-  if (typeof value === "string" && MOOD_OPTIONS.some((m) => m.id === value)) return value;
-  if (typeof value === "number") return legacyNumberToMoodId(value);
+  if (typeof value === "number" && !Number.isNaN(value)) return legacyNumberToMoodId(value);
+  if (typeof value === "string") {
+    const t = value.trim();
+    if (!t) return MOOD_OPTIONS[0].id;
+    if (MOOD_OPTIONS.some((m) => m.id === t)) return t;
+    if (/^-?\d+(\.\d+)?$/.test(t)) {
+      const n = Number(t);
+      if (!Number.isNaN(n)) return legacyNumberToMoodId(n);
+    }
+    const byLabel = MOOD_OPTIONS.find((m) => m.label.toLowerCase() === t.toLowerCase());
+    if (byLabel) return byLabel.id;
+  }
   return MOOD_OPTIONS[0].id;
 }
 
@@ -278,9 +288,26 @@ function legacyToUnifiedOrdinal(n) {
 }
 
 function moodOrdinalUnified(stored) {
-  if (stored == null) return null;
-  if (typeof stored === "number") return legacyToUnifiedOrdinal(stored);
-  const i = MOOD_OPTIONS.findIndex((m) => m.id === stored);
+  if (stored == null || stored === "") return null;
+  if (typeof stored === "number") {
+    if (Number.isNaN(stored)) return null;
+    return legacyToUnifiedOrdinal(stored);
+  }
+  const s = String(stored).trim();
+  if (!s) return null;
+  if (/^-?\d+(\.\d+)?$/.test(s)) {
+    const n = Number(s);
+    if (!Number.isNaN(n)) return legacyToUnifiedOrdinal(n);
+  }
+  let id = null;
+  if (MOOD_OPTIONS.some((m) => m.id === s)) {
+    id = s;
+  } else {
+    const byLabel = MOOD_OPTIONS.find((m) => m.label.toLowerCase() === s.toLowerCase());
+    if (byLabel) id = byLabel.id;
+  }
+  if (!id) return null;
+  const i = MOOD_OPTIONS.findIndex((m) => m.id === id);
   return i >= 0 ? i + 1 : null;
 }
 
