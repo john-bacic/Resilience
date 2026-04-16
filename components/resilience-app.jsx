@@ -443,41 +443,27 @@ function Input({ className = "", onFocus, onBlur, onChange, value, ...props }) {
 }
 
 function LogDateControl({ id, value, min, max, onChange }) {
-  const inputRef = useRef(null);
   const display = formatDateKeyDisplay(value || max);
 
-  function handleClick() {
-    const el = inputRef.current;
-    if (!el) return;
-    if (typeof el.showPicker === "function") {
-      el.showPicker();
-    } else {
-      el.focus();
-      el.click();
-    }
-  }
-
   return (
-    <div className="min-w-0 max-w-full">
-      <button
-        type="button"
-        onClick={handleClick}
-        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-base text-slate-900 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 dark:focus-visible:ring-offset-slate-950"
-        aria-label="Choose date for this entry"
+    <div className="relative min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+      {/* Visible label; real hit target is the transparent date input on top (iOS anchors the picker here). */}
+      <div
+        className="pointer-events-none min-h-[2.75rem] truncate px-3 py-2 text-left text-base text-slate-900 dark:text-slate-100"
+        aria-hidden="true"
       >
         {display || "Select a date"}
-      </button>
+      </div>
       <input
-        ref={inputRef}
         id={id}
         type="date"
         value={value}
         min={min}
         max={max}
         onChange={onChange}
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
+        className="absolute inset-0 z-10 m-0 h-full min-h-[2.75rem] w-full cursor-pointer opacity-0"
+        style={{ WebkitAppearance: "none", appearance: "none" }}
+        aria-label="Choose date for this entry"
       />
     </div>
   );
