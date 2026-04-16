@@ -1,5 +1,5 @@
-import { ClerkProvider } from "@clerk/nextjs";
 import { Inter } from "next/font/google";
+import AppProviders from "@/components/app-providers";
 import ClerkHeader from "@/components/clerk-header";
 import "./globals.css";
 
@@ -21,10 +21,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} antialiased`}>
-        <ClerkProvider dynamic>
+        <AppProviders>
           <ClerkHeader />
           {children}
-        </ClerkProvider>
+        </AppProviders>
       </body>
     </html>
   );
