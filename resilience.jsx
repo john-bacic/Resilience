@@ -395,7 +395,7 @@ export default function ResilienceMVPApp() {
 
     const diaryEntry = {
       id: getRandomId(),
-      title: eventText.slice(0, 55) || "Untitled entry",
+      title: eventText.trim() || "Untitled entry",
       rawText: eventText,
       triggeredSteps,
       ...eventForm,

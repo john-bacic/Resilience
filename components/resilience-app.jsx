@@ -202,9 +202,31 @@ function diarySourceLabel(entry) {
 }
 
 function diaryTitleDisplay(entry) {
-  const t = String(entry.title || "").trim();
-  const stripped = t.replace(/^morning reflection:\s*/i, "").trim();
-  return stripped || t || "Untitled entry";
+  let t = String(entry.title || "").trim();
+  t = t.replace(/^morning reflection:\s*/i, "").trim() || t;
+  // Legacy rows stored title capped at 55 chars; prefer full text when still present.
+  const useRawTextForTitle =
+    entry.source === "log" || (entry.source == null && entry.rawText != null && !entry.scenario);
+  if (useRawTextForTitle && entry.rawText != null) {
+    const rt = String(entry.rawText).trim();
+    if (rt) {
+      if (!t) return rt;
+      if (rt === t) return rt;
+      if ((t.length === 55 || rt.length > t.length) && rt.startsWith(t)) return rt;
+      return t;
+    }
+  }
+  if (entry.scenario != null && (entry.source === "reflection" || entry.source == null)) {
+    const sc = String(entry.scenario).trim();
+    const scShow = sc.replace(/^morning reflection:\s*/i, "").trim() || sc;
+    if (scShow) {
+      if (!t) return scShow;
+      if (scShow === t) return scShow;
+      if ((t.length === 55 || scShow.length > t.length) && scShow.startsWith(t)) return scShow;
+      return t;
+    }
+  }
+  return t || "Untitled entry";
 }
 
 function profileToScenarioContext(profile) {
@@ -1128,7 +1150,7 @@ export default function ResilienceApp() {
     const diaryEntryFromReflection = {
       id: getRandomId(),
       day: currentProgramDay,
-      title: scenarioText.slice(0, 55) || "Morning reflection",
+      title: scenarioText || "Morning reflection",
       rawText: reflection.reaction || "",
       scenario: scenarioText,
       source: "reflection",
@@ -1221,7 +1243,7 @@ export default function ResilienceApp() {
       id: getRandomId(),
       day: dayForEntry,
       loggedDateKey: logEntryDateKey,
-      title: eventText.slice(0, 55) || "Untitled entry",
+      title: eventText.trim() || "Untitled entry",
       rawText: eventText,
       source: "log",
       triggeredSteps,
@@ -1277,7 +1299,8 @@ export default function ResilienceApp() {
               fact: editingDiaryDraft.fact,
               story: editingDiaryDraft.story,
               chosenResponse: editingDiaryDraft.chosenResponse,
-              lesson: editingDiaryDraft.lesson
+              lesson: editingDiaryDraft.lesson,
+              ...(entry.source === "log" ? { rawText: editingDiaryDraft.title } : {})
             }
           : entry
       )
@@ -1818,7 +1841,7 @@ export default function ResilienceApp() {
                               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
                                 {diarySourceLabel(entry)}
                               </p>
-                              <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              <h3 className="mt-1 whitespace-pre-wrap break-words text-lg font-semibold leading-snug text-slate-900 dark:text-slate-100">
                                 {diaryTitleDisplay(entry)}
                               </h3>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -1828,8 +1851,10 @@ export default function ResilienceApp() {
                                 {entry.day != null ? ` · Day ${entry.day}` : ""}
                               </p>
                             </div>
-                            {entry.scenario && (
-                              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
+                            {entry.scenario && entry.source !== "reflection" && (
+                              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
+                                {entry.scenario}
+                              </p>
                             )}
                             {entry.moodBefore != null && entry.moodAfter != null && (
                               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -1979,7 +2004,7 @@ export default function ResilienceApp() {
                               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
                                 {diarySourceLabel(entry)}
                               </p>
-                              <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              <h3 className="mt-1 whitespace-pre-wrap break-words text-lg font-semibold leading-snug text-slate-900 dark:text-slate-100">
                                 {diaryTitleDisplay(entry)}
                               </h3>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -1989,8 +2014,10 @@ export default function ResilienceApp() {
                                 {entry.day != null ? ` · Day ${entry.day}` : ""}
                               </p>
                             </div>
-                            {entry.scenario && (
-                              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.scenario}</p>
+                            {entry.scenario && entry.source !== "reflection" && (
+                              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
+                                {entry.scenario}
+                              </p>
                             )}
                             {entry.moodBefore != null && entry.moodAfter != null && (
                               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
