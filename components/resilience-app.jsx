@@ -57,6 +57,7 @@ const DEFAULT_STATE = {
   tone: "Balanced",
   personalProfile: {
     age: "",
+    birthday: "",
     maritalStatus: "",
     children: "",
     dog: "",
@@ -157,6 +158,32 @@ function formatDateKeyDisplay(dateKey) {
   });
 }
 
+/** `birthdayKey` is `YYYY-MM-DD` from `<input type="date">`. */
+function calculateAgeFromBirthday(birthdayKey) {
+  const s = String(birthdayKey || "").trim();
+  if (!s) return null;
+  const parts = s.split("-").map(Number);
+  const [y, m, d] = parts;
+  if (!y || !m || !d || parts.length !== 3) return null;
+  const birth = new Date(y, m - 1, d);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (birth > todayStart) return null;
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age >= 0 ? age : null;
+}
+
+/** Age string for prompts: from birthday when set, else legacy free-text `age`. */
+function ageForProfile(profile) {
+  if (!profile || typeof profile !== "object") return "";
+  const computed = calculateAgeFromBirthday(profile.birthday);
+  if (computed != null) return String(computed);
+  return String(profile.age || "").trim();
+}
+
 function dateKeyYearsAgo(years) {
   const d = new Date();
   d.setFullYear(d.getFullYear() - years);
@@ -183,7 +210,8 @@ function diaryTitleDisplay(entry) {
 function profileToScenarioContext(profile) {
   if (!profile || typeof profile !== "object") return "";
   const entries = [
-    ["Age", profile.age],
+    ["Age", ageForProfile(profile)],
+    ["Birthday", profile.birthday],
     ["Marital status", profile.maritalStatus],
     ["Children", profile.children],
     ["Dog", profile.dog],
@@ -365,10 +393,11 @@ function StoicMarkIcon({ className = "" }) {
   );
 }
 
-function Card({ className = "", children }) {
+function Card({ className = "", children, ...props }) {
   return (
     <div
       className={`rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`}
+      {...props}
     >
       {children}
     </div>
@@ -601,8 +630,11 @@ export default function ResilienceApp() {
   const [logEntryDateKey, setLogEntryDateKey] = useState(() => toDateKey(new Date()));
 
   function savePersonalProfile() {
+    const birthday = String(profileDraft.birthday || "").trim();
+    const computedAge = calculateAgeFromBirthday(birthday);
     const nextProfile = {
-      age: String(profileDraft.age || "").trim(),
+      birthday,
+      age: birthday && computedAge != null ? String(computedAge) : String(profileDraft.age || "").trim(),
       maritalStatus: String(profileDraft.maritalStatus || "").trim(),
       children: String(profileDraft.children || "").trim(),
       dog: String(profileDraft.dog || "").trim(),
@@ -823,7 +855,7 @@ export default function ResilienceApp() {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     async function loadState() {
       try {
@@ -832,6 +864,8 @@ export default function ResilienceApp() {
         if (!response.ok) {
           if (response.status === 401) {
             console.warn("/api/state: unauthorized — using local default until signed in.");
+          } else {
+            console.warn(`/api/state: ${response.status} — using local default.`);
           }
           return;
         }
@@ -842,7 +876,10 @@ export default function ResilienceApp() {
         if (error?.name !== "AbortError") console.error(error);
       } finally {
         clearTimeout(timeoutId);
-        if (!cancelled) setLoading(false);
+        // Always clear loading: Strict Mode runs cleanup (cancelled=true) before the first
+        // fetch settles; gating on `cancelled` here can skip setLoading(false) and leave
+        // the UI stuck if the follow-up request never completes. `setApp` stays guarded above.
+        setLoading(false);
       }
     }
 
@@ -850,6 +887,8 @@ export default function ResilienceApp() {
     return () => {
       cancelled = true;
       controller.abort();
+      // Strict Mode / fast remount: unblock UI even if this effect’s fetch hasn’t hit `finally` yet.
+      setLoading(false);
     };
   }, []);
 
@@ -857,7 +896,7 @@ export default function ResilienceApp() {
   useEffect(() => {
     const maxWait = window.setTimeout(() => {
       setLoading(false);
-    }, 15000);
+    }, 10000);
     return () => window.clearTimeout(maxWait);
   }, []);
 
@@ -1344,6 +1383,8 @@ export default function ResilienceApp() {
       })
     : app.diary;
 
+  const profileDraftComputedAge = calculateAgeFromBirthday(profileDraft.birthday);
+
   function toggleFocusPanel() {
     setIsFocusOpen((wasOpen) => {
       if (wasOpen) {
@@ -1402,12 +1443,42 @@ export default function ResilienceApp() {
                       Used to make "What could go wrong today" more specific to your real life.
                     </p>
                     <div className="mt-3 grid gap-2">
-                      <Textarea
-                        value={profileDraft.age}
-                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, age: event.target.value }))}
-                        placeholder="Age"
-                        className="min-h-[2.75rem]"
-                      />
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-300" htmlFor="profile-birthday">
+                          Birthday
+                        </label>
+                        <div className="flex min-h-[2.75rem] min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                          <input
+                            id="profile-birthday"
+                            type="date"
+                            value={profileDraft.birthday || ""}
+                            onChange={(event) => setProfileDraft((prev) => ({ ...prev, birthday: event.target.value }))}
+                            max={toDateKey(new Date())}
+                            className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-base text-slate-900 outline-none focus:ring-0 dark:text-slate-100 dark:[color-scheme:dark] dark:[&::-webkit-calendar-picker-indicator]:cursor-pointer dark:[&::-webkit-calendar-picker-indicator]:invert dark:[&::-webkit-calendar-picker-indicator]:opacity-90 dark:[&::-moz-calendar-picker-indicator]:cursor-pointer dark:[&::-moz-calendar-picker-indicator]:invert dark:[&::-moz-calendar-picker-indicator]:opacity-90"
+                          />
+                          <div
+                            className="flex w-[4.25rem] shrink-0 flex-col items-center justify-center border-l border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900/90"
+                            aria-live="polite"
+                            title={
+                              profileDraftComputedAge != null
+                                ? `Age ${profileDraftComputedAge} (from birthday)`
+                                : "Age is calculated from the date on the left"
+                            }
+                          >
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                              Age
+                            </span>
+                            <span className="text-lg font-semibold tabular-nums leading-tight text-slate-900 dark:text-slate-100">
+                              {profileDraftComputedAge != null ? profileDraftComputedAge : "—"}
+                            </span>
+                          </div>
+                        </div>
+                        {!profileDraft.birthday && String(profileDraft.age || "").trim() ? (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Legacy saved age until you pick a birthday: {profileDraft.age}
+                          </p>
+                        ) : null}
+                      </div>
                       <Textarea
                         value={profileDraft.maritalStatus}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, maritalStatus: event.target.value }))}
