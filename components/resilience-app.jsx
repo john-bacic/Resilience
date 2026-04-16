@@ -442,6 +442,47 @@ function Input({ className = "", onFocus, onBlur, onChange, value, ...props }) {
   );
 }
 
+function LogDateControl({ id, value, min, max, onChange }) {
+  const inputRef = useRef(null);
+  const display = formatDateKeyDisplay(value || max);
+
+  function handleClick() {
+    const el = inputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === "function") {
+      el.showPicker();
+    } else {
+      el.focus();
+      el.click();
+    }
+  }
+
+  return (
+    <div className="min-w-0 max-w-full">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-base text-slate-900 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 dark:focus-visible:ring-offset-slate-950"
+        aria-label="Choose date for this entry"
+      >
+        {display || "Select a date"}
+      </button>
+      <input
+        ref={inputRef}
+        id={id}
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={onChange}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
 function Textarea({ className = "", onInput, onFocus, onBlur, onChange, value, ...props }) {
   const textareaRef = useRef(null);
 
@@ -1603,14 +1644,12 @@ export default function ResilienceApp() {
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="log-entry-date">
                           When did this happen?
                         </label>
-                        <Input
+                        <LogDateControl
                           id="log-entry-date"
-                          type="date"
                           value={logEntryDateKey}
                           min={dateKeyYearsAgo(5)}
                           max={todayDateKey}
                           onChange={(e) => setLogEntryDateKey(e.target.value || todayDateKey)}
-                          className="max-w-[320px] sm:max-w-[360px] md:max-w-none"
                         />
                         {logEntryDateKey !== todayDateKey && logEntryPreviewDay != null && (
                           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1622,7 +1661,7 @@ export default function ResilienceApp() {
                         value={eventText}
                         onChange={(e) => setEventText(e.target.value)}
                         placeholder="My friend canceled and now I feel rejected."
-                        className="min-h-[180px] max-w-[320px] sm:max-w-[360px] md:max-w-none"
+                        className="min-h-[180px]"
                       />
                       <Button onClick={analyzeEvent} disabled={!eventText.trim() || isAnalyzing}>
                         {isAnalyzing ? "Analyzing..." : "Analyze entry"}
