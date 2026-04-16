@@ -1,17 +1,26 @@
 "use client";
 
-import { UserButton, useAuth } from "@clerk/nextjs";
+import { useAuth, useClerk } from "@clerk/nextjs";
+import { UserCircle2 } from "lucide-react";
 import Link from "next/link";
 
 export default function ClerkHeader() {
   const { isSignedIn, isLoaded } = useAuth();
+  const { openUserProfile } = useClerk();
 
   return (
     <header className="flex min-h-[48px] items-center justify-end gap-2 bg-slate-100 px-4 py-2 md:px-8 dark:bg-slate-950">
       {!isLoaded ? (
         <div className="h-8 w-24 animate-pulse rounded-lg bg-slate-200/80 dark:bg-slate-800" aria-hidden />
       ) : isSignedIn ? (
-        <UserButton afterSignOutUrl="/sign-in" />
+        <button
+          type="button"
+          onClick={() => openUserProfile()}
+          className="inline-flex items-center justify-center text-slate-700 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 dark:text-slate-100 dark:hover:text-white dark:focus-visible:ring-offset-slate-950"
+          aria-label="Account"
+        >
+          <UserCircle2 className="h-6 w-6" />
+        </button>
       ) : (
         <>
           <Link
