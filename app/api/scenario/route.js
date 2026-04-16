@@ -51,8 +51,10 @@ const STYLE_VARIANTS = [
   { style: "relationship ambiguity", category: "social" },
   { style: "self-doubt moment", category: "internal" },
   { style: "public awkwardness", category: "social" },
-  { style: "ridiculous-but-stressful mishap", category: "absurd" },
-  { style: "darkly funny inconvenience spiral", category: "absurd" },
+  { style: "a serious betrayal or trust rupture with someone close", category: "social" },
+  { style: "a major financial or legal consequence that feels life-changing", category: "financial" },
+  { style: "grave health news or a scary medical situation involving you or family", category: "health" },
+  { style: "job loss, demotion, or professional humiliation", category: "work" },
   { style: "time-pressure conflict", category: "work" },
   { style: "miscommunication tension", category: "social" },
   { style: "work pressure", category: "work" }
@@ -76,7 +78,13 @@ export async function GET(request) {
 
   try {
     const weightedPool = STYLE_VARIANTS.flatMap((variant) => {
-      const weight = variant.category === "work" ? 1 : 3;
+      const heavy =
+        variant.style.includes("grave") ||
+        variant.style.includes("major financial") ||
+        variant.style.includes("betrayal") ||
+        variant.style.includes("job loss");
+      let weight = variant.category === "work" ? 1 : 3;
+      if (heavy) weight = 2;
       return Array.from({ length: weight }, () => variant);
     });
     const allowedPool = weightedPool.filter((variant) => variant.category !== avoidCategory);
@@ -96,9 +104,9 @@ export async function GET(request) {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
         max_tokens: 80,
-        temperature: 1,
+        temperature: 0.9,
         system:
-          "You write short negative scenarios for resilience training in casual everyday language. Scenario intensity can range from everyday stress to serious disruption, including personal, family, civic, and environmental situations. Occasionally include absurd, darkly funny, or ridiculous mishaps, but still make them emotionally inconvenient/negative and believable enough to reflect on. Avoid graphic violence or gore. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
+          "You write short negative scenarios for resilience training in casual everyday language. Scenarios must feel realistic and plausible—things that could actually happen in real life. Do not use cartoonish, surreal, slapstick, or ridiculous setups. Vary intensity: often use believable everyday stress; sometimes use a heavier, more devastating outcome (serious loss, deep relational harm, scary health or money news, career blow) when it still fits the requested style. Avoid graphic violence, gore, or sexual violence. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
         messages: [
           {
             role: "user",
@@ -114,7 +122,7 @@ ${
     ? `Personal profile (treat every statement as true; do not contradict it—e.g. if someone has no car, do not put vehicle problems on them; if notes say X, scenarios must remain consistent with X): ${profile}`
     : ""
 }
-Sometimes make it weirdly funny or ridiculous, but still clearly negative.
+Ground the scenario in real life; match the style's emotional weight (lighter styles = stressful but everyday; heavier styles = allow more severe, devastating outcomes that could plausibly happen).
 ${avoid ? `Do NOT repeat or paraphrase this scenario: "${avoid}".` : ""}
 Return one sentence only.`
           }
