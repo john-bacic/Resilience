@@ -1,5 +1,5 @@
-import ResilienceApp from "@/components/resilience-app";
+import ResilienceAppLoader from "./resilience-app-loader";
 
 export default function Page() {
-  return <ResilienceApp />;
+  return <ResilienceAppLoader />;
 }

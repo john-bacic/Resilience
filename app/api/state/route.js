@@ -37,8 +37,11 @@ export async function GET() {
     }
     return Response.json({ state: { ...defaultState, ...rows[0].state } });
   } catch (error) {
-    console.error(error);
-    return Response.json({ error: "Failed to fetch app state" }, { status: 500 });
+    console.error("GET /api/state failed, using default state", error);
+    return Response.json(
+      { state: { ...defaultState }, source: "fallback", degraded: true },
+      { status: 200 }
+    );
   }
 }
 

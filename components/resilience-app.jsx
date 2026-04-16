@@ -8,9 +8,8 @@ import {
   Brain,
   Calendar,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   ChevronRight,
+  Cog,
   Home,
   LineChart,
   Moon,
@@ -76,6 +75,39 @@ const DEFAULT_STATE = {
   streak: 0
 };
 
+function getRandomId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function normalizeAppState(raw) {
+  try {
+    const merged = { ...DEFAULT_STATE, ...(raw && typeof raw === "object" ? raw : {}) };
+    merged.intentions = Array.isArray(merged.intentions) ? merged.intentions : [];
+    merged.reflections = Array.isArray(merged.reflections) ? merged.reflections : [];
+    merged.diary = Array.isArray(merged.diary)
+      ? merged.diary.map((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return { id: getRandomId(), triggeredSteps: [], title: "", createdAt: new Date().toISOString() };
+          }
+          return {
+            ...entry,
+            triggeredSteps: Array.isArray(entry.triggeredSteps) ? entry.triggeredSteps : []
+          };
+        })
+      : [];
+    merged.personalProfile = {
+      ...DEFAULT_STATE.personalProfile,
+      ...(typeof merged.personalProfile === "object" && merged.personalProfile ? merged.personalProfile : {})
+    };
+    return merged;
+  } catch {
+    return { ...DEFAULT_STATE };
+  }
+}
+
 function weekFocus(day) {
   if (day <= 7) return "Facts vs Story";
   if (day <= 14) return "Control Filter";
@@ -103,6 +135,23 @@ function programDayFromStart(startDateKey) {
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const diffDays = Math.floor((todayStart - start) / 86400000) + 1;
   return Math.max(1, Math.min(30, diffDays));
+}
+
+function diarySourceLabel(entry) {
+  const s = entry.source;
+  if (s === "reflection") return "Reflection";
+  if (s === "log") return "Log what happened?";
+  if (s === "morning" || s === "morning_reflection") return "Morning";
+  const title = String(entry.title || "");
+  if (/^morning reflection:/i.test(title)) return "Morning";
+  if (entry.moodBefore != null && entry.moodAfter != null) return "Log what happened?";
+  return "Reflection";
+}
+
+function diaryTitleDisplay(entry) {
+  const t = String(entry.title || "").trim();
+  const stripped = t.replace(/^morning reflection:\s*/i, "").trim();
+  return stripped || t || "Untitled entry";
 }
 
 function profileToScenarioContext(profile) {
@@ -180,13 +229,6 @@ function detectSteps(text) {
   return triggered;
 }
 
-function getRandomId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
 function Card({ className = "", children }) {
   return (
     <div
@@ -229,7 +271,7 @@ function Input({ className = "", onFocus, onBlur, onChange, value, ...props }) {
         onChange={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
-        className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
+        className={`w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
       />
     </div>
   );
@@ -260,7 +302,7 @@ function Textarea({ className = "", onInput, onFocus, onBlur, onChange, value, .
           event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
           if (onInput) onInput(event);
         }}
-        className={`w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
+        className={`w-full resize-none overflow-hidden whitespace-pre-wrap break-words rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 ${className}`}
       />
     </div>
   );
@@ -320,7 +362,7 @@ function AiBadgeIcon() {
       viewBox="0 0 26 25"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="text-slate-900 dark:text-white"
+      className="text-slate-900 opacity-50 dark:text-white"
       aria-hidden="true"
     >
       <path
@@ -369,6 +411,7 @@ export default function ResilienceApp() {
   const [profileDraft, setProfileDraft] = useState(DEFAULT_STATE.personalProfile);
   const [profileSavedFeedback, setProfileSavedFeedback] = useState(false);
   const profileSavedTimerRef = useRef(null);
+  const focusPanelContentRef = useRef(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflectionScenario, setReflectionScenario] = useState("");
   const [reflection, setReflection] = useState({
@@ -615,19 +658,31 @@ export default function ResilienceApp() {
   }, [app.personalProfile]);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     async function loadState() {
       try {
-        const response = await fetch("/api/state", { cache: "no-store" });
+        const response = await fetch("/api/state", { cache: "no-store", signal: controller.signal });
+        if (cancelled) return;
         if (!response.ok) return;
         const payload = await response.json();
-        setApp({ ...DEFAULT_STATE, ...(payload.state || {}) });
+        if (cancelled) return;
+        setApp(normalizeAppState(payload?.state));
       } catch (error) {
-        console.error(error);
+        if (error?.name !== "AbortError") console.error(error);
       } finally {
-        setLoading(false);
+        clearTimeout(timeoutId);
+        if (!cancelled) setLoading(false);
       }
     }
+
     void loadState();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   const currentDateKey = useMemo(() => toDateKey(new Date()), []);
@@ -680,7 +735,7 @@ export default function ResilienceApp() {
     const total = app.diary.length;
     const stepCounts = app.diary.reduce(
       (acc, entry) => {
-        entry.triggeredSteps.forEach((step) => {
+        (entry.triggeredSteps || []).forEach((step) => {
           acc[step] += 1;
         });
         return acc;
@@ -779,10 +834,10 @@ export default function ResilienceApp() {
     const diaryEntryFromReflection = {
       id: getRandomId(),
       day: currentProgramDay,
-      title: `Morning reflection: ${scenarioText.slice(0, 45)}`,
+      title: scenarioText.slice(0, 55) || "Morning reflection",
       rawText: reflection.reaction || "",
       scenario: scenarioText,
-      source: "morning_reflection",
+      source: "reflection",
       triggeredSteps: [],
       fact: reflection.facts || "",
       story: reflection.story || "",
@@ -861,6 +916,7 @@ export default function ResilienceApp() {
       day: currentProgramDay,
       title: eventText.slice(0, 55) || "Untitled entry",
       rawText: eventText,
+      source: "log",
       triggeredSteps,
       ...eventForm,
       moodBefore: clampMood(eventForm.moodBefore),
@@ -885,7 +941,7 @@ export default function ResilienceApp() {
   function openDiaryEditor(entry) {
     setEditingDiaryId(entry.id);
     setEditingDiaryDraft({
-      title: entry.title || "",
+      title: diaryTitleDisplay(entry),
       scenario: entry.scenario || "",
       fact: entry.fact || "",
       story: entry.story || "",
@@ -1079,6 +1135,24 @@ export default function ResilienceApp() {
       })
     : app.diary;
 
+  function toggleFocusPanel() {
+    setIsFocusOpen((wasOpen) => {
+      if (wasOpen) {
+        const root = focusPanelContentRef.current;
+        const ae = document.activeElement;
+        if (
+          root &&
+          ae instanceof HTMLElement &&
+          root.contains(ae) &&
+          (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT")
+        ) {
+          ae.blur();
+        }
+      }
+      return !wasOpen;
+    });
+  }
+
   if (loading) {
     return <div className="p-10 text-center text-slate-600 dark:text-slate-300">Loading your resilience app...</div>;
   }
@@ -1088,47 +1162,32 @@ export default function ResilienceApp() {
       <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
         <Card className="min-w-0">
           <CardContent className="space-y-3 pt-6">
-            <div
-              className="cursor-pointer rounded-3xl bg-slate-50 p-4 dark:bg-slate-800"
-              onClick={() => setIsFocusOpen((prev) => !prev)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setIsFocusOpen((prev) => !prev);
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              aria-label={isFocusOpen ? "Collapse current focus" : "Expand current focus"}
-            >
+            <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-2xl bg-slate-900 p-2 text-white dark:bg-slate-100 dark:text-slate-900">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="shrink-0 rounded-2xl bg-slate-900 p-2 text-white dark:bg-slate-100 dark:text-slate-900">
                     <Shield className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle>Unshaken</CardTitle>
                     <CardDescription>30-day Resilience</CardDescription>
                   </div>
                 </div>
-                <div
-                  className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"
-                  aria-hidden="true"
+                <button
+                  type="button"
+                  onClick={toggleFocusPanel}
+                  aria-expanded={isFocusOpen}
+                  aria-label={isFocusOpen ? "Collapse profile and focus settings" : "Expand profile and focus settings"}
+                  className={`shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:text-slate-400 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900 ${
+                    isFocusOpen ? "text-emerald-700 dark:text-emerald-400" : ""
+                  }`}
                 >
-                  {isFocusOpen ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </div>
+                  <Cog className="h-4 w-4" aria-hidden />
+                </button>
               </div>
               {isFocusOpen && (
-                <div>
-                  <div
-                    className="mb-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70"
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                  >
+                <div ref={focusPanelContentRef}>
+                  <div className="mb-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">About you</p>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       Used to make "What could go wrong today" more specific to your real life.
@@ -1197,10 +1256,7 @@ export default function ResilienceApp() {
                     <Button
                       variant="outline"
                       className="mt-4 w-full justify-start gap-2"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setIsDarkMode((prev) => !prev);
-                      }}
+                      onClick={() => setIsDarkMode((prev) => !prev)}
                     >
                       {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                       {isDarkMode ? "Light mode" : "Dark mode"}
@@ -1388,7 +1444,12 @@ export default function ResilienceApp() {
                         {app.diary.map((entry) => (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
                             <div>
-                              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
+                                {diarySourceLabel(entry)}
+                              </p>
+                              <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                                {diaryTitleDisplay(entry)}
+                              </h3>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
                                 {new Date(entry.createdAt).toLocaleDateString()}
                               </p>
@@ -1527,7 +1588,12 @@ export default function ResilienceApp() {
                         {progressDiaryEntries.map((entry) => (
                           <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
                             <div>
-                              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
+                                {diarySourceLabel(entry)}
+                              </p>
+                              <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                                {diaryTitleDisplay(entry)}
+                              </h3>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
                                 {new Date(entry.createdAt).toLocaleDateString()}
                               </p>
