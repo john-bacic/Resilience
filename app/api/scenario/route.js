@@ -84,7 +84,7 @@ export async function GET(request) {
     const picked = finalPool[Math.floor(Math.random() * finalPool.length)];
     const style = picked.style;
     const pickedCategory = picked.category;
-    const shouldUseProfile = Boolean(profile) && Math.random() < 0.55;
+    const hasProfile = Boolean(profile);
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -109,8 +109,11 @@ Make it concrete and vivid, not generic.
 Use clear future tense only.
 Use informal, conversational wording (not formal or clinical).
 Not always work-related; rotate among personal life, parents/relatives, community/government systems, and broader life disruptions.
-${shouldUseProfile ? `Personal profile context (use this for this scenario): ${profile}` : ""}
-${profile && !shouldUseProfile ? "For this scenario, do not rely on personal profile details. Keep it broader and varied." : ""}
+${
+  hasProfile
+    ? `Personal profile (treat every statement as true; do not contradict it—e.g. if someone has no car, do not put vehicle problems on them; if notes say X, scenarios must remain consistent with X): ${profile}`
+    : ""
+}
 Sometimes make it weirdly funny or ridiculous, but still clearly negative.
 ${avoid ? `Do NOT repeat or paraphrase this scenario: "${avoid}".` : ""}
 Return one sentence only.`
