@@ -69,6 +69,7 @@ export async function GET(request) {
   const avoid = String(searchParams.get("avoid") || "").trim();
   const avoidCategory = String(searchParams.get("avoidCategory") || "").trim().toLowerCase();
   const profile = String(searchParams.get("profile") || "").trim();
+  const diaryPatterns = String(searchParams.get("diaryPatterns") || "").trim();
   const fallback = fallbackForDay(day);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -125,6 +126,7 @@ Important: Profile is background context. Do NOT center most scenarios on childr
     : ""
 }
 Ground the scenario in real life; match the style's emotional weight (lighter styles = stressful but everyday; heavier styles = allow more severe, devastating outcomes that could plausibly happen).
+${diaryPatterns ? `Diary pattern signals (use these recurring themes as fuel for fresh scenarios; do not copy these phrases verbatim): ${diaryPatterns}` : ""}
 ${avoid ? `Do NOT repeat or paraphrase this scenario: "${avoid}".` : ""}
 Return one sentence only.`
           }

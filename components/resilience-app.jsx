@@ -318,6 +318,66 @@ function profileToScenarioContext(profile) {
   return entries.map(([label, value]) => `${label}: ${value}`).join(" | ");
 }
 
+/** Summarize recurring diary themes to steer scenario generation. */
+function diaryPatternContext(diary) {
+  if (!Array.isArray(diary) || diary.length === 0) return "";
+  const recent = diary
+    .filter((entry) => entry && typeof entry === "object")
+    .slice(0, 40);
+  if (recent.length === 0) return "";
+
+  const storyCounts = {};
+  const lessonCounts = {};
+  const stepCounts = { step1: 0, step2: 0, step3: 0 };
+  const moodBeforeCounts = {};
+  const moodAfterCounts = {};
+
+  for (const entry of recent) {
+    const story = String(entry.story || "").trim();
+    if (story) storyCounts[story] = (storyCounts[story] || 0) + 1;
+    const lesson = String(entry.lesson || "").trim();
+    if (lesson) lessonCounts[lesson] = (lessonCounts[lesson] || 0) + 1;
+    for (const step of entry.triggeredSteps || []) {
+      if (stepCounts[step] != null) stepCounts[step] += 1;
+    }
+    const before = normalizeMoodId(entry.moodBefore);
+    if (before) moodBeforeCounts[before] = (moodBeforeCounts[before] || 0) + 1;
+    const after = normalizeMoodId(entry.moodAfter);
+    if (after) moodAfterCounts[after] = (moodAfterCounts[after] || 0) + 1;
+  }
+
+  const topN = (counts, n = 2) =>
+    Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n)
+      .map(([k, c]) => `${k} (${c})`);
+
+  const topStories = topN(storyCounts, 2);
+  const topLessons = topN(lessonCounts, 2);
+  const topSteps = topN(stepCounts, 3)
+    .map((s) => s.replace("step1", "Facts vs Story").replace("step2", "Control Filter").replace("step3", "Chosen Response"));
+  const topBeforeMoods = topN(moodBeforeCounts, 2).map((row) => {
+    const [id, countPart] = row.split(" ");
+    const m = MOOD_OPTIONS.find((opt) => opt.id === id);
+    return `${m ? `${m.emoji} ${m.label}` : id} ${countPart || ""}`.trim();
+  });
+  const topAfterMoods = topN(moodAfterCounts, 2).map((row) => {
+    const [id, countPart] = row.split(" ");
+    const m = MOOD_OPTIONS.find((opt) => opt.id === id);
+    return `${m ? `${m.emoji} ${m.label}` : id} ${countPart || ""}`.trim();
+  });
+
+  const lines = [
+    topStories.length ? `Recurring stories: ${topStories.join(", ")}` : "",
+    topLessons.length ? `Recurring lessons: ${topLessons.join(", ")}` : "",
+    topSteps.length ? `Most triggered steps: ${topSteps.join(", ")}` : "",
+    topBeforeMoods.length ? `Common before-moods: ${topBeforeMoods.join(", ")}` : "",
+    topAfterMoods.length ? `Common after-moods: ${topAfterMoods.join(", ")}` : ""
+  ].filter(Boolean);
+
+  return lines.join(" | ").slice(0, 700);
+}
+
 function base64UrlToUint8Array(base64UrlString) {
   const padding = "=".repeat((4 - (base64UrlString.length % 4)) % 4);
   const base64 = (base64UrlString + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -1069,6 +1129,7 @@ export default function ResilienceApp() {
     () => diaryEntriesSorted.filter((entry) => diaryEntryDateKey(entry) === todayDateKey),
     [diaryEntriesSorted, todayDateKey]
   );
+  const diaryPatternPrompt = useMemo(() => diaryPatternContext(app.diary), [app.diary]);
 
   const progressDiaryEntries = useMemo(() => {
     if (!selectedProgressDate) return diaryEntriesSorted;
@@ -1093,6 +1154,9 @@ export default function ResilienceApp() {
       if (profileContext) {
         params.set("profile", profileContext);
       }
+      if (diaryPatternPrompt) {
+        params.set("diaryPatterns", diaryPatternPrompt);
+      }
       if (dailyScenario) {
         params.set("avoid", dailyScenario);
       }
@@ -1116,7 +1180,7 @@ export default function ResilienceApp() {
 
   useEffect(() => {
     void loadDailyScenario();
-  }, [currentProgramDay]);
+  }, [currentProgramDay, diaryPatternPrompt]);
 
   const todayScenario = useMemo(
     () => dailyScenario || scenarioForDay(currentProgramDay),
