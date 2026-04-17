@@ -69,6 +69,7 @@ const DEFAULT_STATE = {
   intentions: [],
   reflections: [],
   diary: [],
+  scenarioHistory: [],
   lastCompletedDay: 0,
   streak: 0
 };
@@ -85,6 +86,9 @@ function normalizeAppState(raw) {
     const merged = { ...DEFAULT_STATE, ...(raw && typeof raw === "object" ? raw : {}) };
     merged.intentions = Array.isArray(merged.intentions) ? merged.intentions : [];
     merged.reflections = Array.isArray(merged.reflections) ? merged.reflections : [];
+    merged.scenarioHistory = Array.isArray(merged.scenarioHistory)
+      ? merged.scenarioHistory.map((s) => String(s || "").trim()).filter(Boolean)
+      : [];
     merged.diary = Array.isArray(merged.diary)
       ? merged.diary.map((entry) => {
           if (!entry || typeof entry !== "object") {
@@ -1143,6 +1147,10 @@ export default function ResilienceApp() {
     [diaryEntriesSorted, todayDateKey]
   );
   const diaryPatternPrompt = useMemo(() => diaryPatternContext(app.diary), [app.diary]);
+  const seenScenariosPrompt = useMemo(
+    () => (Array.isArray(app.scenarioHistory) ? app.scenarioHistory.slice(-25).join("\n") : ""),
+    [app.scenarioHistory]
+  );
 
   const progressDiaryEntries = useMemo(() => {
     if (!selectedProgressDate) return diaryEntriesSorted;
@@ -1170,6 +1178,9 @@ export default function ResilienceApp() {
       if (diaryPatternPrompt) {
         params.set("diaryPatterns", diaryPatternPrompt);
       }
+      if (seenScenariosPrompt) {
+        params.set("seenScenarios", seenScenariosPrompt);
+      }
       if (dailyScenario) {
         params.set("avoid", dailyScenario);
       }
@@ -1180,9 +1191,20 @@ export default function ResilienceApp() {
       if (!response.ok) return;
       const payload = await response.json();
       if (payload?.scenario) {
-        setDailyScenario(payload.scenario);
+        const nextScenario = String(payload.scenario).trim();
+        setDailyScenario(nextScenario);
         setDailyScenarioSource(payload.source || "fallback");
         setDailyScenarioCategory(payload.category || "");
+        if (nextScenario) {
+          setAndPersist((prev) => {
+            const prevHistory = Array.isArray(prev.scenarioHistory) ? prev.scenarioHistory : [];
+            if (prevHistory.some((s) => String(s).toLowerCase() === nextScenario.toLowerCase())) return prev;
+            return {
+              ...prev,
+              scenarioHistory: [...prevHistory, nextScenario].slice(-2000)
+            };
+          });
+        }
       }
     } catch (error) {
       console.error(error);
@@ -2059,7 +2081,7 @@ export default function ResilienceApp() {
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
                               <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
                                 <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
-                                  Edit
+                                  Review
                                 </Button>
                                 <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
                                   Delete
@@ -2225,7 +2247,7 @@ export default function ResilienceApp() {
                             <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
                             <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
                               <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
-                                Edit
+                                Review
                               </Button>
                               <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
                                 Delete
@@ -2495,7 +2517,7 @@ export default function ResilienceApp() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <Card className="max-h-[92vh] w-full max-w-2xl overflow-auto">
             <CardHeader>
-              <CardTitle>Edit diary entry</CardTitle>
+              <CardTitle>Review diary entry</CardTitle>
               <CardDescription>Update or remove this entry.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

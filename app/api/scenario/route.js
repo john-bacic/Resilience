@@ -60,6 +60,13 @@ const STYLE_VARIANTS = [
   { style: "work pressure", category: "work" }
 ];
 
+function normalizeScenarioText(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 export async function GET(request) {
   const authResult = await requireAuthUserId();
   if ("response" in authResult) return authResult.response;
@@ -70,6 +77,15 @@ export async function GET(request) {
   const avoidCategory = String(searchParams.get("avoidCategory") || "").trim().toLowerCase();
   const profile = String(searchParams.get("profile") || "").trim();
   const diaryPatterns = String(searchParams.get("diaryPatterns") || "").trim();
+  const seenScenariosRaw = String(searchParams.get("seenScenarios") || "").trim();
+  const seenScenarios = seenScenariosRaw
+    ? seenScenariosRaw
+        .split("\n")
+        .map((s) => String(s || "").trim())
+        .filter(Boolean)
+    : [];
+  const seenSet = new Set(seenScenarios.map(normalizeScenarioText));
+  if (avoid) seenSet.add(normalizeScenarioText(avoid));
   const fallback = fallbackForDay(day);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -95,23 +111,7 @@ export async function GET(request) {
     const pickedCategory = picked.category;
     const hasProfile = Boolean(profile);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
-        max_tokens: 80,
-        temperature: 0.9,
-        system:
-          "You write short negative scenarios for resilience training in casual everyday language. Scenarios must feel realistic and plausible—things that could actually happen in real life. Do not use cartoonish, surreal, slapstick, or ridiculous setups. Vary intensity: often use believable everyday stress; sometimes use a heavier, more devastating outcome (serious loss, deep relational harm, scary health or money news, career blow) when it still fits the requested style. Avoid graphic violence, gore, or sexual violence. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
-        messages: [
-          {
-            role: "user",
-            content: `Generate one daily negative scenario for Day ${day} in a 30-day resilience practice.
+    const buildPrompt = () => `Generate one daily negative scenario for Day ${day} in a 30-day resilience practice.
 Style: ${style}.
 Keep it under 18 words.
 Make it concrete and vivid, not generic.
@@ -127,35 +127,53 @@ Important: Profile is background context. Do NOT center most scenarios on childr
 }
 Ground the scenario in real life; match the style's emotional weight (lighter styles = stressful but everyday; heavier styles = allow more severe, devastating outcomes that could plausibly happen).
 ${diaryPatterns ? `Diary pattern signals (use these recurring themes as fuel for fresh scenarios; do not copy these phrases verbatim): ${diaryPatterns}` : ""}
+${seenScenarios.length > 0 ? `Never repeat any previously used scenario exactly. Already used: ${seenScenarios.join(" | ")}` : ""}
 ${avoid ? `Do NOT repeat or paraphrase this scenario: "${avoid}".` : ""}
-Return one sentence only.`
-          }
-        ]
-      })
-    });
+Return one sentence only.`;
 
-    if (!response.ok) {
-      return Response.json({ scenario: fallback, source: "fallback" });
-    }
-
-    const payload = await response.json();
-    const scenario =
-      payload?.content?.find((item) => item?.type === "text")?.text?.trim() ||
-      payload?.content?.[0]?.text?.trim();
-    if (!scenario) {
-      return Response.json({ scenario: fallback, source: "fallback" });
-    }
-
-    if (avoid && scenario.toLowerCase() === avoid.toLowerCase()) {
-      return Response.json({
-        scenario: fallbackForDay(day + 1),
-        source: "fallback",
-        category: "fallback"
+    let scenario = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
+          max_tokens: 80,
+          temperature: 0.9,
+          system:
+            "You write short negative scenarios for resilience training in casual everyday language. Scenarios must feel realistic and plausible—things that could actually happen in real life. Do not use cartoonish, surreal, slapstick, or ridiculous setups. Vary intensity: often use believable everyday stress; sometimes use a heavier, more devastating outcome (serious loss, deep relational harm, scary health or money news, career blow) when it still fits the requested style. Avoid graphic violence, gore, or sexual violence. Return exactly one plain sentence, no quotes, no numbering. The sentence must be in future tense (e.g., using 'will').",
+          messages: [{ role: "user", content: buildPrompt() }]
+        })
       });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      const candidate =
+        payload?.content?.find((item) => item?.type === "text")?.text?.trim() ||
+        payload?.content?.[0]?.text?.trim() ||
+        "";
+      if (!candidate) continue;
+      const normalized = normalizeScenarioText(candidate);
+      if (!seenSet.has(normalized)) {
+        scenario = candidate;
+        break;
+      }
+    }
+
+    if (!scenario) {
+      for (let i = 0; i < FALLBACK_SCENARIOS.length; i += 1) {
+        const candidate = fallbackForDay(day + i);
+        if (!seenSet.has(normalizeScenarioText(candidate))) {
+          return Response.json({ scenario: candidate, source: "fallback", category: "fallback" });
+        }
+      }
+      return Response.json({ scenario: fallback, source: "fallback", category: "fallback" });
     }
 
     const normalizedScenario = /\bwill\b/i.test(scenario) ? scenario : `You will ${scenario.charAt(0).toLowerCase()}${scenario.slice(1)}`;
-
     return Response.json({ scenario: normalizedScenario, source: "ai", category: pickedCategory });
   } catch (error) {
     console.error(error);
