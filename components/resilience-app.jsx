@@ -841,6 +841,19 @@ export default function ResilienceApp() {
     moodAfter: "centered"
   });
   const [logEntryDateKey, setLogEntryDateKey] = useState(() => toDateKey(new Date()));
+  const isAnyModalOpen =
+    reflectionOpen || isReminderModalOpen || isMoodModalOpen || isDiaryEditModalOpen;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const { body } = document;
+    const prevOverflow = body.style.overflow;
+    if (isAnyModalOpen) body.style.overflow = "hidden";
+    else body.style.overflow = prevOverflow || "";
+    return () => {
+      body.style.overflow = prevOverflow;
+    };
+  }, [isAnyModalOpen]);
 
   function savePersonalProfile() {
     const birthday = String(profileDraft.birthday || "").trim();
