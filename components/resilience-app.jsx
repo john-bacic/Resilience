@@ -784,6 +784,9 @@ function AiBadgeIcon() {
 
 export default function ResilienceApp() {
   const [app, setApp] = useState(DEFAULT_STATE);
+  /** Ref + state: block PUT /api/state until first GET /api/state attempt finishes (avoids racing empty defaults over server diary). */
+  const initialStateLoadedRef = useRef(false);
+  const [initialStateLoaded, setInitialStateLoaded] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("home");
@@ -884,7 +887,7 @@ export default function ResilienceApp() {
     profileSavedTimerRef.current = setTimeout(() => {
       setProfileSavedFeedback(false);
     }, 1800);
-    void loadDailyScenario(nextProfile);
+    if (initialStateLoadedRef.current) void loadDailyScenario(nextProfile);
   }
 
   async function refreshVersionInfo() {
@@ -900,6 +903,7 @@ export default function ResilienceApp() {
   }
 
   async function persistState(nextState) {
+    if (!initialStateLoadedRef.current) return;
     try {
       setSaving(true);
       const response = await fetch("/api/state", {
@@ -1106,6 +1110,10 @@ export default function ResilienceApp() {
         if (error?.name !== "AbortError") console.error(error);
       } finally {
         clearTimeout(timeoutId);
+        if (!cancelled) {
+          initialStateLoadedRef.current = true;
+          setInitialStateLoaded(true);
+        }
       }
     }
 
@@ -1214,8 +1222,9 @@ export default function ResilienceApp() {
   }
 
   useEffect(() => {
+    if (!initialStateLoaded) return;
     void loadDailyScenario();
-  }, [currentProgramDay, diaryPatternPrompt]);
+  }, [currentProgramDay, diaryPatternPrompt, initialStateLoaded]);
 
   const todayScenario = useMemo(
     () => dailyScenario || scenarioForDay(currentProgramDay),
