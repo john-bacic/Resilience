@@ -849,16 +849,44 @@ export default function ResilienceApp() {
   });
   const [logEntryDateKey, setLogEntryDateKey] = useState(() => toDateKey(new Date()));
   const isAnyModalOpen =
-    reflectionOpen || isReminderModalOpen || isMoodModalOpen || isDiaryEditModalOpen;
+    reflectionOpen ||
+    isReminderModalOpen ||
+    isMoodModalOpen ||
+    isDiaryEditModalOpen ||
+    Boolean(logMoodPicker);
 
   useEffect(() => {
-    if (typeof document === "undefined") return undefined;
+    if (typeof document === "undefined" || !isAnyModalOpen) return undefined;
+
+    const html = document.documentElement;
     const { body } = document;
-    const prevOverflow = body.style.overflow;
-    if (isAnyModalOpen) body.style.overflow = "hidden";
-    else body.style.overflow = prevOverflow || "";
+    const scrollY = window.scrollY;
+
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyPosition = body.style.position;
+    const prevBodyTop = body.style.top;
+    const prevBodyWidth = body.style.width;
+    const prevBodyLeft = body.style.left;
+    const prevBodyRight = body.style.right;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+
     return () => {
-      body.style.overflow = prevOverflow;
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.position = prevBodyPosition;
+      body.style.top = prevBodyTop;
+      body.style.width = prevBodyWidth;
+      body.style.left = prevBodyLeft;
+      body.style.right = prevBodyRight;
+      window.scrollTo(0, scrollY);
     };
   }, [isAnyModalOpen]);
 
