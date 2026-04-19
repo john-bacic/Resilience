@@ -3023,7 +3023,15 @@ export default function ResilienceApp() {
                             )}
                             {diaryInsights.source === "fallback" && (
                               <p className="text-xs text-amber-800 dark:text-amber-300/90">
-                                Quick pass without the full model — add ANTHROPIC_API_KEY for a deeper, friend-style read.
+                                {diaryInsights.fallbackReason === "missing_api_key" ||
+                                diaryInsights.fallbackReason == null
+                                  ? "The deployed server doesn’t have ANTHROPIC_API_KEY (a local .env file is not used on Vercel). Add it under Project → Settings → Environment Variables for Production, redeploy, then Refresh."
+                                  : diaryInsights.fallbackReason === "anthropic_http"
+                                    ? "Anthropic returned an error (model name, billing, or rate limit). Check Vercel function logs; try Refresh in a moment."
+                                    : diaryInsights.fallbackReason === "parse_error" ||
+                                        diaryInsights.fallbackReason === "empty_ai"
+                                      ? "The model reply couldn’t be used. Tap Refresh."
+                                      : "Showing the on-device summary instead of the full AI read."}
                               </p>
                             )}
                           </div>

@@ -24,7 +24,15 @@ function stripUnwantedInsightPhrases(text) {
   return s.replace(/\s{2,}/g, " ").trim();
 }
 
-function fallbackFromEntries(entries) {
+/**
+ * @param {string} [options.fallbackReason]
+ * - `missing_api_key` — server has no ANTHROPIC_API_KEY (e.g. not set on Vercel)
+ * - `anthropic_http` — Anthropic returned non-OK status
+ * - `parse_error` — response wasn’t valid JSON
+ * - `empty_ai` — model returned no usable overview/patterns
+ */
+function fallbackFromEntries(entries, options = {}) {
+  const { fallbackReason = "missing_api_key" } = options;
   const stepCounts = { step1: 0, step2: 0, step3: 0 };
   let moodShifts = 0;
   let moodShiftSum = 0;
@@ -74,12 +82,21 @@ function fallbackFromEntries(entries) {
     );
   }
 
+  const caveatByReason =
+    fallbackReason === "missing_api_key"
+      ? "This is the quick on-device version — add ANTHROPIC_API_KEY to the server (e.g. Vercel → Environment Variables) if you want the full AI read."
+      : fallbackReason === "anthropic_http"
+        ? "The full AI read didn’t load (Anthropic returned an error). What’s above is a quick on-device summary from your entries."
+        : fallbackReason === "parse_error"
+          ? "The full AI reply didn’t parse. What’s above is a quick on-device summary from your entries."
+          : "The model returned nothing usable. What’s above is a quick on-device summary from your entries.";
+
   return {
     source: "fallback",
+    fallbackReason,
     overview: parts.join(" "),
     patterns: [],
-    caveat:
-      "This is the quick on-device version — add ANTHROPIC_API_KEY if you want me to go deeper and sound even more like someone who sat with every line."
+    caveat: caveatByReason
   };
 }
 
@@ -100,9 +117,9 @@ export async function POST(request) {
     return Response.json({ error: "entries array required" }, { status: 400 });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = typeof process.env.ANTHROPIC_API_KEY === "string" ? process.env.ANTHROPIC_API_KEY.trim() : "";
   if (!apiKey) {
-    return Response.json(fallbackFromEntries(entries));
+    return Response.json(fallbackFromEntries(entries, { fallbackReason: "missing_api_key" }));
   }
 
   const model = process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307";
@@ -146,7 +163,9 @@ Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bulle
     });
 
     if (!response.ok) {
-      return Response.json(fallbackFromEntries(entries));
+      const errText = await response.text().catch(() => "");
+      console.error("[diary-insights] Anthropic HTTP", response.status, errText.slice(0, 800));
+      return Response.json(fallbackFromEntries(entries, { fallbackReason: "anthropic_http" }));
     }
 
     const payload = await response.json();
@@ -157,7 +176,8 @@ Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bulle
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      return Response.json(fallbackFromEntries(entries));
+      console.error("[diary-insights] JSON parse failed, raw:", cleaned.slice(0, 400));
+      return Response.json(fallbackFromEntries(entries, { fallbackReason: "parse_error" }));
     }
 
     let overview = stripUnwantedInsightPhrases(String(parsed?.overview || "").trim());
@@ -167,7 +187,7 @@ Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bulle
     let caveat = stripUnwantedInsightPhrases(String(parsed?.caveat || "").trim());
 
     if (!overview && patternsRaw.length === 0) {
-      return Response.json(fallbackFromEntries(entries));
+      return Response.json(fallbackFromEntries(entries, { fallbackReason: "empty_ai" }));
     }
 
     return Response.json({
@@ -183,6 +203,6 @@ Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bulle
     });
   } catch (e) {
     console.error("[diary-insights]", e);
-    return Response.json(fallbackFromEntries(entries));
+    return Response.json(fallbackFromEntries(entries, { fallbackReason: "anthropic_http" }));
   }
 }
