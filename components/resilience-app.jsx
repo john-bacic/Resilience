@@ -59,6 +59,9 @@ const SCENARIOS = [
   "A conversation ends without the validation you hoped for."
 ];
 
+/** Undo delete toast duration (must match progress bar animation + timeout). */
+const DELETE_UNDO_TOAST_MS = 6000;
+
 const DEFAULT_STATE = {
   day: 1,
   startDate: null,
@@ -2239,7 +2242,7 @@ export default function ResilienceApp() {
       deleteUndoTimerRef.current = setTimeout(() => {
         setLastDeletedDiaryEntry(null);
         deleteUndoTimerRef.current = null;
-      }, 6000);
+      }, DELETE_UNDO_TOAST_MS);
 
       const nextDiary = prev.diary.filter((entry) => entry.id !== entryId);
       const pf = progressFieldsFromDiary(nextDiary);
@@ -3941,8 +3944,8 @@ export default function ResilienceApp() {
       ) : null}
 
       {lastDeletedDiaryEntry && (
-        <div className="fixed bottom-4 left-1/2 z-[60] w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border-2 border-[#f472b6] bg-[#fbcfe8] px-4 py-3 shadow-lg dark:border-[#be123c] dark:bg-[#881337]">
-          <div className="flex items-center justify-between gap-3">
+        <div className="fixed bottom-4 left-1/2 z-[60] w-[min(92vw,520px)] -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-[#f472b6] bg-[#fbcfe8] shadow-lg dark:border-[#be123c] dark:bg-[#881337]">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
             <p className="text-sm text-rose-950 dark:text-rose-50">Diary entry deleted.</p>
             <Button
               variant="outline"
@@ -3951,6 +3954,15 @@ export default function ResilienceApp() {
             >
               Undo
             </Button>
+          </div>
+          <div className="h-1 w-full bg-rose-400/35 dark:bg-rose-950/80" aria-hidden="true">
+            <div
+              key={lastDeletedDiaryEntry.entry.id}
+              className="h-full w-full origin-left bg-rose-700 dark:bg-rose-200"
+              style={{
+                animation: `deleteUndoProgress ${DELETE_UNDO_TOAST_MS}ms linear forwards`
+              }}
+            />
           </div>
         </div>
       )}

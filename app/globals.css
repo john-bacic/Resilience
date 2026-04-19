@@ -42,6 +42,15 @@ body {
   animation: none;
 }
 
+@keyframes deleteUndoProgress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 /* iOS Safari: left-align date text and keep it inside the allotted width */
 input[type="date"] {
   width: 100%;
