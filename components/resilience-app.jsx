@@ -904,12 +904,12 @@ function DiaryEntrySharedActivityFooter({ entryId, reactionsSummary, children })
       <div className="flex min-w-0 flex-1 items-center">
         {has ? (
           <span
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-800 dark:text-emerald-300"
+            className="inline-flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300"
             title="Someone you shared your diary with liked or commented on this entry"
+            aria-label="Likes or comments from people you shared with"
           >
             <Heart className="h-3.5 w-3.5 shrink-0 text-rose-500" aria-hidden />
             <MessageCircle className="h-3.5 w-3.5 shrink-0 text-slate-600 dark:text-slate-400" aria-hidden />
-            <span>Shared activity</span>
           </span>
         ) : null}
       </div>
