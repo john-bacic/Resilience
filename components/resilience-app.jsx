@@ -1,6 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
@@ -941,8 +942,67 @@ function AiBadgeIcon() {
   );
 }
 
+/** Ceremonial staggered reveal for the daily variable scenario (respects reduced motion). */
+function DailyScenarioReveal({ text, reduceMotion }) {
+  if (!text?.trim()) {
+    return (
+      <p className="mt-3 text-lg italic text-slate-500 dark:text-slate-400" aria-hidden>
+        …
+      </p>
+    );
+  }
+  if (reduceMotion) {
+    return (
+      <p className="mt-3 break-words pr-8 text-2xl font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere] dark:text-slate-100">
+        {text}
+      </p>
+    );
+  }
+  const parts = text.split(/(\s+)/);
+  let wordIndex = 0;
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={text}
+        role="status"
+        aria-live="polite"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, filter: "blur(6px)" }}
+        transition={{ duration: 0.28 }}
+        className="mt-3 pr-8"
+      >
+        <p className="break-words text-2xl font-semibold leading-snug tracking-tight text-slate-900 [overflow-wrap:anywhere] dark:text-slate-100">
+          {parts.map((part, i) => {
+            if (/^\s+$/.test(part)) {
+              return <span key={`sp-${i}`}>{part}</span>;
+            }
+            const delay = Math.min(wordIndex++ * 0.045, 1.65);
+            return (
+              <motion.span
+                key={`w-${i}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay,
+                  duration: 0.48,
+                  ease: [0.22, 1, 0.36, 1]
+                }}
+                className="inline-block align-baseline"
+              >
+                {part}
+              </motion.span>
+            );
+          })}
+        </p>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export default function ResilienceApp() {
   const { user: clerkUser } = useUser();
+  const reduceMotion = useReducedMotion();
   const [app, setApp] = useState(DEFAULT_STATE);
   /** Ref + state: block PUT /api/state until first GET /api/state attempt finishes (avoids racing empty defaults over server diary). */
   const initialStateLoadedRef = useRef(false);
@@ -2705,10 +2765,61 @@ export default function ResilienceApp() {
                     />
                   </CardHeader>
                   <CardContent className="space-y-5">
-                    <div className="relative rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">What could go wrong today</p>
-                        <div className="flex items-center gap-2">
+                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/45 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.65)] ring-1 ring-emerald-200/40 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/30 dark:ring-emerald-900/30">
+                      {reduceMotion ? (
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute inset-x-8 top-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent"
+                        />
+                      ) : (
+                        <motion.div
+                          key={todayScenario}
+                          aria-hidden
+                          className="pointer-events-none absolute inset-x-8 top-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent"
+                          initial={{ scaleX: 0, opacity: 0 }}
+                          animate={{ scaleX: 1, opacity: 1 }}
+                          transition={{ duration: 1.05, ease: [0.22, 1, 0.36, 1] }}
+                          style={{ transformOrigin: "center" }}
+                        />
+                      )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            {reduceMotion ? (
+                              <span className="flex shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>
+                                <Sparkles className="h-4 w-4" strokeWidth={2} />
+                              </span>
+                            ) : (
+                              <motion.span
+                                className="flex shrink-0 text-emerald-600 dark:text-emerald-400"
+                                aria-hidden
+                                initial={{ opacity: 0, scale: 0.82, rotate: -14 }}
+                                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                              >
+                                <Sparkles className="h-4 w-4" strokeWidth={2} />
+                              </motion.span>
+                            )}
+                            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                              What could go wrong today
+                            </p>
+                          </div>
+                          {reduceMotion ? (
+                            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-700/85 dark:text-emerald-400/90">
+                              Today&apos;s rehearsal
+                            </p>
+                          ) : (
+                            <motion.p
+                              className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-700/85 dark:text-emerald-400/90"
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.18, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                            >
+                              Today&apos;s rehearsal
+                            </motion.p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
                           <Button
                             variant="outline"
                             className="px-3 py-1.5"
@@ -2721,9 +2832,15 @@ export default function ResilienceApp() {
                           </Button>
                         </div>
                       </div>
-                      <p className="mt-3 break-words pr-8 text-2xl font-semibold leading-snug text-slate-900 [overflow-wrap:anywhere] dark:text-slate-100">
-                        {todayScenario}
-                      </p>
+                      <motion.div
+                        animate={{
+                          opacity: isRefreshingScenario ? 0.4 : 1,
+                          filter: isRefreshingScenario ? "blur(1.5px)" : "blur(0px)"
+                        }}
+                        transition={{ duration: 0.35 }}
+                      >
+                        <DailyScenarioReveal text={todayScenario} reduceMotion={reduceMotion} />
+                      </motion.div>
                       {dailyScenarioSource === "ai" && (
                         <div className="pointer-events-none absolute bottom-3 right-3">
                           <AiBadgeIcon />
