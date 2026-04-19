@@ -13,6 +13,7 @@ import {
   Moon,
   NotebookPen,
   RefreshCw,
+  Share2,
   Sun,
   Sparkles,
   X
@@ -961,13 +962,32 @@ export default function ResilienceApp() {
     moodAfter: "centered"
   });
   const [logEntryDateKey, setLogEntryDateKey] = useState(() => toDateKey(new Date()));
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [sharingSettings, setSharingSettings] = useState(null);
+  const [sharingLoadError, setSharingLoadError] = useState(null);
+  const [sharingBusy, setSharingBusy] = useState(false);
+  const [grantUserIdInput, setGrantUserIdInput] = useState("");
+  const [sharedDiariesItems, setSharedDiariesItems] = useState([]);
+  const [sharedDiariesUnavailable, setSharedDiariesUnavailable] = useState(false);
+  const [sharedDiaryModalOpen, setSharedDiaryModalOpen] = useState(false);
+  const [sharedDiaryOwnerLabel, setSharedDiaryOwnerLabel] = useState("");
+  const [sharedDiaryEntries, setSharedDiaryEntries] = useState([]);
+  const [sharedDiaryLoading, setSharedDiaryLoading] = useState(false);
+  const [sharedDiaryError, setSharedDiaryError] = useState(null);
+  const [sharedEntryViewOpen, setSharedEntryViewOpen] = useState(false);
+  const [sharedViewingEntry, setSharedViewingEntry] = useState(null);
+  const [sharedViewingDraft, setSharedViewingDraft] = useState(null);
+  const [sharedViewingOmitTitleScenario, setSharedViewingOmitTitleScenario] = useState(false);
   const isAnyModalOpen =
     reflectionOpen ||
     isReminderModalOpen ||
     isMoodModalOpen ||
     isDiaryEditModalOpen ||
     Boolean(logMoodPicker) ||
-    Boolean(diaryEditMoodPicker);
+    Boolean(diaryEditMoodPicker) ||
+    isShareModalOpen ||
+    sharedDiaryModalOpen ||
+    sharedEntryViewOpen;
 
   useEffect(() => {
     if (typeof document === "undefined" || !isAnyModalOpen) return undefined;
@@ -1266,6 +1286,32 @@ export default function ResilienceApp() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSharedList() {
+      try {
+        const response = await fetch("/api/shared-diaries", { cache: "no-store" });
+        if (cancelled) return;
+        if (response.status === 503) {
+          setSharedDiariesUnavailable(true);
+          setSharedDiariesItems([]);
+          return;
+        }
+        if (!response.ok) return;
+        const data = await response.json();
+        if (cancelled) return;
+        setSharedDiariesUnavailable(false);
+        setSharedDiariesItems(Array.isArray(data?.items) ? data.items : []);
+      } catch {
+        if (!cancelled) setSharedDiariesItems([]);
+      }
+    }
+    void loadSharedList();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const todayDateKey = toDateKey(new Date());
   const programAnchorKey = useMemo(
     () => programProgressAnchorKey(app.diary, app.startDate),
@@ -1338,6 +1384,30 @@ export default function ResilienceApp() {
     }
     return null;
   }, [editingDiaryId, isDiaryEditModalOpen, app.diary]);
+
+  const sharedDiaryAnchorKey = useMemo(
+    () => programProgressAnchorKey(sharedDiaryEntries, null),
+    [sharedDiaryEntries]
+  );
+  const sharedDiarySorted = useMemo(
+    () => sortDiaryEntriesByCalendarNewestFirst(sharedDiaryEntries),
+    [sharedDiaryEntries]
+  );
+
+  const sharedViewingDateLabel = useMemo(() => {
+    if (!sharedViewingEntry) return null;
+    if (sharedViewingEntry.loggedDateKey) return formatDateKeyDisplay(sharedViewingEntry.loggedDateKey);
+    if (sharedViewingEntry.createdAt) return new Date(sharedViewingEntry.createdAt).toLocaleDateString();
+    return null;
+  }, [sharedViewingEntry]);
+
+  const sharedViewingMoodPair = useMemo(() => {
+    if (!sharedViewingEntry) return null;
+    if (sharedViewingEntry.moodBefore != null && sharedViewingEntry.moodAfter != null) {
+      return { before: sharedViewingEntry.moodBefore, after: sharedViewingEntry.moodAfter };
+    }
+    return null;
+  }, [sharedViewingEntry]);
 
   async function loadDailyScenario(profileOverride) {
     try {
@@ -1687,6 +1757,123 @@ export default function ResilienceApp() {
     setDiaryEntryModalViewOnly(viewOnly);
     setDiaryEditMoodPicker(null);
     setIsDiaryEditModalOpen(true);
+  }
+
+  async function loadSharingSettings() {
+    setSharingLoadError(null);
+    try {
+      const response = await fetch("/api/me/sharing", { cache: "no-store" });
+      if (response.status === 503) {
+        setSharingLoadError("Sharing requires a database (POSTGRES_URL / DATABASE_URL).");
+        setSharingSettings(null);
+        return;
+      }
+      if (!response.ok) {
+        setSharingLoadError("Could not load sharing settings.");
+        return;
+      }
+      const data = await response.json();
+      setSharingSettings({
+        enabled: Boolean(data?.enabled),
+        grantedTo: Array.isArray(data?.grantedTo) ? data.grantedTo : []
+      });
+    } catch {
+      setSharingLoadError("Could not load sharing settings.");
+    }
+  }
+
+  async function applySharingPatch(body) {
+    setSharingBusy(true);
+    setSharingLoadError(null);
+    try {
+      const response = await fetch("/api/me/sharing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (response.status === 503) {
+        setSharingLoadError("Sharing requires a database (POSTGRES_URL / DATABASE_URL).");
+        return;
+      }
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        setSharingLoadError(typeof err?.error === "string" ? err.error : "Update failed.");
+        return;
+      }
+      const data = await response.json();
+      setSharingSettings({
+        enabled: Boolean(data?.enabled),
+        grantedTo: Array.isArray(data?.grantedTo) ? data.grantedTo : []
+      });
+      setGrantUserIdInput("");
+    } catch {
+      setSharingLoadError("Update failed.");
+    } finally {
+      setSharingBusy(false);
+    }
+  }
+
+  function closeSharedEntryViewer() {
+    setSharedEntryViewOpen(false);
+    setSharedViewingEntry(null);
+    setSharedViewingDraft(null);
+    setSharedViewingOmitTitleScenario(false);
+  }
+
+  function closeSharedDiaryModal() {
+    setSharedDiaryModalOpen(false);
+    setSharedDiaryOwnerLabel("");
+    setSharedDiaryEntries([]);
+    setSharedDiaryLoading(false);
+    setSharedDiaryError(null);
+    closeSharedEntryViewer();
+  }
+
+  async function loadSharedDiaryForOwner(ownerId, label) {
+    setSharedDiaryOwnerLabel(label);
+    setSharedDiaryModalOpen(true);
+    setSharedDiaryLoading(true);
+    setSharedDiaryError(null);
+    setSharedDiaryEntries([]);
+    closeSharedEntryViewer();
+    try {
+      const response = await fetch(`/api/shared-diaries/${encodeURIComponent(ownerId)}`, { cache: "no-store" });
+      if (response.status === 403) {
+        setSharedDiaryError("You do not have access to this diary.");
+        return;
+      }
+      if (response.status === 503) {
+        setSharedDiaryError("Sharing requires a database.");
+        return;
+      }
+      if (!response.ok) {
+        setSharedDiaryError("Could not load this diary.");
+        return;
+      }
+      const data = await response.json();
+      const rawDiary = Array.isArray(data?.diary) ? data.diary : [];
+      setSharedDiaryEntries(normalizeAppState({ diary: rawDiary }).diary);
+    } catch {
+      setSharedDiaryError("Could not load this diary.");
+    } finally {
+      setSharedDiaryLoading(false);
+    }
+  }
+
+  function openSharedEntryViewer(entry) {
+    setSharedViewingEntry(entry);
+    setSharedViewingDraft({
+      title: diaryTitleDisplay(entry),
+      scenario: entry.scenario || "",
+      fact: entry.fact || "",
+      story: entry.story || "",
+      chosenResponse: entry.chosenResponse || "",
+      lesson: entry.lesson || "",
+      moodBefore: entry.moodBefore != null ? normalizeMoodId(entry.moodBefore) : "reflective",
+      moodAfter: entry.moodAfter != null ? normalizeMoodId(entry.moodAfter) : "centered"
+    });
+    setSharedViewingOmitTitleScenario(isDiaryLogEntry(entry));
+    setSharedEntryViewOpen(true);
   }
 
   function saveDiaryEdit() {
@@ -2056,6 +2243,42 @@ export default function ResilienceApp() {
                   onClick={() => setTab("progress")}
                 />
               </div>
+              <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+                <div className="space-y-1">
+                  <label htmlFor="shared-diary-select" className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                    View someone else&apos;s diary
+                  </label>
+                  <select
+                    id="shared-diary-select"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                    defaultValue=""
+                    disabled={sharedDiariesUnavailable || sharedDiariesItems.length === 0}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const el = e.target;
+                      if (!v) return;
+                      const item = sharedDiariesItems.find((i) => i.ownerId === v);
+                      void loadSharedDiaryForOwner(v, item?.label || v);
+                      requestAnimationFrame(() => {
+                        el.value = "";
+                      });
+                    }}
+                  >
+                    <option value="">
+                      {sharedDiariesUnavailable
+                        ? "Sharing needs a database"
+                        : sharedDiariesItems.length === 0
+                          ? "No one has shared with you"
+                          : "Choose…"}
+                    </option>
+                    {sharedDiariesItems.map((item) => (
+                      <option key={item.ownerId} value={item.ownerId}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -2302,7 +2525,23 @@ export default function ResilienceApp() {
                 <div className="grid gap-6 lg:grid-cols-2">
                   <Card>
                     <CardHeader>
-                      <SectionTitle icon={LineChart} title="Progress" subtitle="How your patterns are moving." />
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <SectionTitle icon={LineChart} title="Progress" subtitle="How your patterns are moving." />
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="shrink-0 gap-2"
+                          type="button"
+                          onClick={() => {
+                            setIsShareModalOpen(true);
+                            void loadSharingSettings();
+                          }}
+                        >
+                          <Share2 className="h-4 w-4 shrink-0" />
+                          Share
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
@@ -2862,6 +3101,209 @@ export default function ResilienceApp() {
           </Card>
         </div>
       )}
+
+      {isShareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <Card className="max-h-[92vh] w-full max-w-md overflow-auto">
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={() => setIsShareModalOpen(false)} />
+              <CardTitle>Share</CardTitle>
+              <CardDescription>
+                Allow specific people to view your diary entries only (not profile or other app data).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {sharingLoadError ? (
+                <p className="rounded-2xl bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
+                  {sharingLoadError}
+                </p>
+              ) : null}
+              {sharingSettings ? (
+                <>
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-500"
+                      checked={sharingSettings.enabled}
+                      disabled={sharingBusy}
+                      onChange={(e) => void applySharingPatch({ enabled: e.target.checked })}
+                    />
+                    <span className="text-sm text-slate-700 dark:text-slate-300">
+                      Let allowlisted people read my diary
+                    </span>
+                  </label>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Grant access (Clerk user id)</p>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        type="text"
+                        value={grantUserIdInput}
+                        onChange={(e) => setGrantUserIdInput(e.target.value)}
+                        placeholder="user_..."
+                        className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
+                      />
+                      <Button
+                        type="button"
+                        disabled={sharingBusy || !grantUserIdInput.trim()}
+                        onClick={() => void applySharingPatch({ grantUserId: grantUserIdInput.trim() })}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Can view your diary</p>
+                    {sharingSettings.grantedTo.length === 0 ? (
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Nobody yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {sharingSettings.grantedTo.map((uid) => (
+                          <li
+                            key={uid}
+                            className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
+                          >
+                            <span className="min-w-0 truncate font-mono text-xs" title={uid}>
+                              {uid}
+                            </span>
+                            <Button
+                              variant="outline"
+                              className="shrink-0 px-2 py-1 text-xs"
+                              type="button"
+                              disabled={sharingBusy}
+                              onClick={() => void applySharingPatch({ revokeUserId: uid })}
+                            >
+                              Revoke
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </>
+              ) : !sharingLoadError ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+              ) : null}
+              <div className="flex justify-end pt-2">
+                <Button variant="outline" type="button" onClick={() => setIsShareModalOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {sharedDiaryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <Card className="max-h-[92vh] w-full max-w-2xl overflow-auto">
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={closeSharedDiaryModal} />
+              <CardTitle className="break-words">
+                {sharedDiaryOwnerLabel ? `${sharedDiaryOwnerLabel}'s diary` : "Shared diary"}
+              </CardTitle>
+              <CardDescription>Read-only · diary entries only</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sharedDiaryLoading ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+              ) : null}
+              {sharedDiaryError ? (
+                <p className="rounded-2xl bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
+                  {sharedDiaryError}
+                </p>
+              ) : null}
+              {!sharedDiaryLoading && !sharedDiaryError && sharedDiarySorted.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">No entries yet.</p>
+              ) : null}
+              {!sharedDiaryLoading && !sharedDiaryError && sharedDiarySorted.length > 0 ? (
+                <div className="grid gap-4">
+                  {sharedDiarySorted.map((entry) => {
+                    const entryProgramDay = diaryEntryProgramDayDisplay(sharedDiaryAnchorKey, entry);
+                    return (
+                      <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
+                            {diarySourceLabel(entry)}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => openSharedEntryViewer(entry)}
+                            className="mt-1 w-full whitespace-pre-wrap break-words text-left text-lg font-semibold leading-snug text-slate-900 transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:text-slate-100 dark:hover:text-slate-200 dark:focus-visible:ring-slate-500"
+                          >
+                            {diaryTitleDisplay(entry)}
+                          </button>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            {entry.loggedDateKey
+                              ? formatDateKeyDisplay(entry.loggedDateKey)
+                              : entry.createdAt
+                                ? new Date(entry.createdAt).toLocaleDateString()
+                                : ""}
+                            {entryProgramDay != null ? ` · Day ${entryProgramDay}` : ""}
+                          </p>
+                        </div>
+                        {entry.scenario && entry.source !== "reflection" ? (
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
+                            {entry.scenario}
+                          </p>
+                        ) : null}
+                        {entry.moodBefore != null && entry.moodAfter != null ? (
+                          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                            Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
+                          </p>
+                        ) : null}
+                        <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {sharedEntryViewOpen && sharedViewingDraft ? (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-950/50 p-4">
+          <Card className="max-h-[92vh] w-full max-w-2xl overflow-auto">
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={closeSharedEntryViewer} />
+              <CardTitle className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span>Diary entry</span>
+                {sharedViewingDateLabel ? (
+                  <span className="text-sm font-normal text-slate-500 dark:text-slate-400">{sharedViewingDateLabel}</span>
+                ) : null}
+              </CardTitle>
+              <CardDescription>Read-only</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <DiaryEntryModalFields
+                viewOnly
+                draft={sharedViewingDraft}
+                omitTitleAndScenario={sharedViewingOmitTitleScenario}
+                onFieldChange={() => {}}
+              />
+              {sharedViewingMoodPair != null ? (
+                <section
+                  className="mt-4"
+                  aria-label={formatMoodPair(sharedViewingMoodPair.before, sharedViewingMoodPair.after)}
+                >
+                  <p className={diaryModalFieldLabelClass}>Mood</p>
+                  <p className="mt-1.5 text-left text-base font-medium leading-snug text-slate-800 dark:text-slate-200">
+                    {formatMoodLabelEmojiPairLine(sharedViewingMoodPair.before, sharedViewingMoodPair.after)}
+                  </p>
+                </section>
+              ) : null}
+              <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-600">
+                <div className="flex justify-end">
+                  <Button variant="outline" type="button" onClick={closeSharedEntryViewer}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {lastDeletedDiaryEntry && (
         <div className="fixed bottom-4 left-1/2 z-[60] w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border-2 border-[#f472b6] bg-[#fbcfe8] px-4 py-3 shadow-lg dark:border-[#be123c] dark:bg-[#881337]">

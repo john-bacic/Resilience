@@ -1,5 +1,6 @@
 import { defaultState } from "@/lib/default-state";
 import { getDb } from "@/lib/db";
+import { ensureUserStateTable } from "@/lib/diary-sharing-db";
 import { requireAuthUserId } from "@/lib/require-auth";
 
 /** @type {Map<string, object>} */
@@ -14,16 +15,6 @@ function getMemoryState(userId) {
     memoryByUser.set(userId, JSON.parse(JSON.stringify(defaultState)));
   }
   return memoryByUser.get(userId);
-}
-
-async function ensureUserStateTable(db) {
-  await db`
-    CREATE TABLE IF NOT EXISTS resilience_user_state (
-      user_id TEXT PRIMARY KEY,
-      state JSONB NOT NULL,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `;
 }
 
 export async function GET() {
