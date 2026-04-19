@@ -305,6 +305,14 @@ function diaryTitleDisplay(entry) {
   return t || "Untitled entry";
 }
 
+/** Log-style diary rows ("Log what happened?" / legacy raw-text saves). */
+function isDiaryLogEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.source === "log") return true;
+  if (entry.source == null && entry.rawText != null && !entry.scenario) return true;
+  return false;
+}
+
 function profileToScenarioContext(profile) {
   if (!profile || typeof profile !== "object") return "";
   const entries = [
@@ -672,18 +680,23 @@ const diaryModalFieldLabelClass =
   "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400";
 
 /** View: plain text only. Edit: standard boxed fields. */
-function DiaryEntryModalFields({ viewOnly, draft, onFieldChange }) {
+function DiaryEntryModalFields({ viewOnly, draft, onFieldChange, omitTitleAndScenario }) {
+  const fields = omitTitleAndScenario
+    ? DIARY_MODAL_FIELDS.filter((f) => f.key !== "title" && f.key !== "scenario")
+    : DIARY_MODAL_FIELDS;
+  const emptyPlaceholder = omitTitleAndScenario ? "" : "—";
+
   if (viewOnly) {
     return (
       <div className="space-y-5">
-        {DIARY_MODAL_FIELDS.map(({ key, label }) => {
+        {fields.map(({ key, label }) => {
           const raw = draft[key];
           const text = raw != null && String(raw).trim() ? String(raw) : "";
           return (
             <section key={key}>
               <p className={diaryModalFieldLabelClass}>{label}</p>
               <p className="mt-1.5 whitespace-pre-wrap text-base leading-relaxed text-slate-900 dark:text-slate-100">
-                {text || "—"}
+                {text || emptyPlaceholder}
               </p>
             </section>
           );
@@ -694,7 +707,7 @@ function DiaryEntryModalFields({ viewOnly, draft, onFieldChange }) {
 
   return (
     <div className="space-y-5">
-      {DIARY_MODAL_FIELDS.map(({ key, label }) => (
+      {fields.map(({ key, label }) => (
         <section key={key} className="min-w-0">
           <label className={`block ${diaryModalFieldLabelClass}`} htmlFor={`diary-modal-${key}`}>
             {label}
@@ -1308,6 +1321,12 @@ export default function ResilienceApp() {
     if (entry.loggedDateKey) return formatDateKeyDisplay(entry.loggedDateKey);
     if (entry.createdAt) return new Date(entry.createdAt).toLocaleDateString();
     return null;
+  }, [editingDiaryId, isDiaryEditModalOpen, app.diary]);
+
+  const omitTitleScenarioInDiaryModal = useMemo(() => {
+    if (!editingDiaryId || !isDiaryEditModalOpen) return false;
+    const entry = app.diary.find((e) => e.id === editingDiaryId);
+    return entry ? isDiaryLogEntry(entry) : false;
   }, [editingDiaryId, isDiaryEditModalOpen, app.diary]);
 
   const editingDiaryEntryMoodPair = useMemo(() => {
@@ -2759,6 +2778,7 @@ export default function ResilienceApp() {
               <DiaryEntryModalFields
                 viewOnly={diaryEntryModalViewOnly}
                 draft={editingDiaryDraft}
+                omitTitleAndScenario={omitTitleScenarioInDiaryModal}
                 onFieldChange={(key, value) =>
                   setEditingDiaryDraft((prev) => ({ ...prev, [key]: value }))
                 }
