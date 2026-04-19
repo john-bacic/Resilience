@@ -8,6 +8,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
+  Copy,
   Home,
   LineChart,
   Moon,
@@ -18,6 +19,7 @@ import {
   Sparkles,
   X
 } from "lucide-react";
+import QRCode from "react-qr-code";
 
 const SCENARIOS = [
   "Someone does not reply to your message.",
@@ -112,16 +114,17 @@ function normalizeAppState(raw) {
   }
 }
 
-/** Normalize GET/PATCH /api/me/sharing JSON into { enabled, shareDisplayName, grants }. */
+/** Normalize GET/PATCH /api/me/sharing JSON into { enabled, shareDisplayName, grants, inviteUrl }. */
 function normalizeSharingApiPayload(data) {
   const enabled = Boolean(data?.enabled);
   const shareDisplayName = typeof data?.shareDisplayName === "string" ? data.shareDisplayName : "";
+  const inviteUrl = typeof data?.inviteUrl === "string" && data.inviteUrl.trim() ? data.inviteUrl.trim() : null;
   const grants = Array.isArray(data?.grants)
     ? data.grants
         .filter((g) => g && typeof g.userId === "string")
         .map((g) => ({ userId: g.userId, label: typeof g.label === "string" ? g.label : g.userId }))
     : (Array.isArray(data?.grantedTo) ? data.grantedTo : []).map((userId) => ({ userId, label: userId }));
-  return { enabled, shareDisplayName, grants };
+  return { enabled, shareDisplayName, grants, inviteUrl };
 }
 
 function weekFocus(day) {
@@ -981,6 +984,7 @@ export default function ResilienceApp() {
   const [grantEmailInput, setGrantEmailInput] = useState("");
   const [grantAdvancedUserIdInput, setGrantAdvancedUserIdInput] = useState("");
   const [shareDisplayNameDraft, setShareDisplayNameDraft] = useState("");
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [sharedDiariesItems, setSharedDiariesItems] = useState([]);
   const [sharedDiariesUnavailable, setSharedDiariesUnavailable] = useState(false);
   const [sharedDiaryModalOpen, setSharedDiaryModalOpen] = useState(false);
@@ -2259,42 +2263,6 @@ export default function ResilienceApp() {
                   onClick={() => setTab("progress")}
                 />
               </div>
-              <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-                <div className="space-y-1">
-                  <label htmlFor="shared-diary-select" className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                    View someone else&apos;s diary
-                  </label>
-                  <select
-                    id="shared-diary-select"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-                    defaultValue=""
-                    disabled={sharedDiariesUnavailable || sharedDiariesItems.length === 0}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      const el = e.target;
-                      if (!v) return;
-                      const item = sharedDiariesItems.find((i) => i.ownerId === v);
-                      void loadSharedDiaryForOwner(v, item?.label || v);
-                      requestAnimationFrame(() => {
-                        el.value = "";
-                      });
-                    }}
-                  >
-                    <option value="">
-                      {sharedDiariesUnavailable
-                        ? "Sharing needs a database"
-                        : sharedDiariesItems.length === 0
-                          ? "No one has shared with you"
-                          : "Choose…"}
-                    </option>
-                    {sharedDiariesItems.map((item) => (
-                      <option key={item.ownerId} value={item.ownerId}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -2816,7 +2784,49 @@ export default function ResilienceApp() {
         </div>
       )}
 
-      <div className="mx-auto mt-6 flex w-full min-w-0 max-w-7xl flex-wrap items-center justify-between gap-2 gap-y-3 rounded-3xl bg-white px-4 py-4 text-sm text-slate-500 shadow-sm dark:border dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 sm:px-5">
+      <div className="mx-auto mt-8 w-full min-w-0 max-w-7xl rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:px-5">
+        <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Shared diaries</p>
+        <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">View someone else&apos;s diary</p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Choose someone who has already shared with you. Sign in with the account they allowed.
+        </p>
+        <div className="mt-3 space-y-1">
+          <label htmlFor="shared-diary-select" className="sr-only">
+            View someone else&apos;s diary
+          </label>
+          <select
+            id="shared-diary-select"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+            defaultValue=""
+            disabled={sharedDiariesUnavailable || sharedDiariesItems.length === 0}
+            onChange={(e) => {
+              const v = e.target.value;
+              const el = e.target;
+              if (!v) return;
+              const item = sharedDiariesItems.find((i) => i.ownerId === v);
+              void loadSharedDiaryForOwner(v, item?.label || v);
+              requestAnimationFrame(() => {
+                el.value = "";
+              });
+            }}
+          >
+            <option value="">
+              {sharedDiariesUnavailable
+                ? "Sharing needs a database"
+                : sharedDiariesItems.length === 0
+                  ? "No one has shared with you yet"
+                  : "Choose someone…"}
+            </option>
+            {sharedDiariesItems.map((item) => (
+              <option key={item.ownerId} value={item.ownerId}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mx-auto mt-4 flex w-full min-w-0 max-w-7xl flex-wrap items-center justify-between gap-2 gap-y-3 rounded-3xl bg-white px-4 py-4 text-sm text-slate-500 shadow-sm dark:border dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 sm:px-5">
         <button
           type="button"
           onClick={openReminderModal}
@@ -3126,7 +3136,7 @@ export default function ResilienceApp() {
               <CardTitle>Share</CardTitle>
               <CardDescription>
                 Allow specific people to view your diary entries only (not profile or other app data). Turn on sharing
-                below, choose how your name appears, then add people by email.
+                below, set your visible name, then share a link or QR code or add people by email.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -3174,6 +3184,68 @@ export default function ResilienceApp() {
                         disabled={sharingBusy}
                         className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                       />
+                    </div>
+                  ) : null}
+                  {sharingSettings.enabled ? (
+                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/90 p-3 dark:border-slate-600 dark:bg-slate-800/60">
+                      <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Invite link &amp; QR code</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Anyone signed in to this app can open the link or scan the QR to add themselves to your
+                        allowlist (same as you approving them).
+                      </p>
+                      {sharingSettings.inviteUrl ? (
+                        <>
+                          <div className="flex justify-center rounded-2xl bg-white p-3 dark:bg-slate-100">
+                            <QRCode value={sharingSettings.inviteUrl} size={168} level="M" />
+                          </div>
+                          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                            <input
+                              type="text"
+                              readOnly
+                              value={sharingSettings.inviteUrl}
+                              className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 font-mono text-[11px] text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                            />
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="gap-1.5 text-xs"
+                                disabled={sharingBusy}
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(sharingSettings.inviteUrl);
+                                    setInviteLinkCopied(true);
+                                    window.setTimeout(() => setInviteLinkCopied(false), 2000);
+                                  } catch {
+                                    /* ignore */
+                                  }
+                                }}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                                {inviteLinkCopied ? "Copied" : "Copy link"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="text-xs"
+                                disabled={sharingBusy}
+                                onClick={() => void applySharingPatch({ rotateInviteToken: true })}
+                              >
+                                New link
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            &quot;New link&quot; invalidates the previous QR and URL if you need to revoke old invites.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-amber-800 dark:text-amber-200/90">
+                          Set <span className="font-mono">NEXT_PUBLIC_APP_URL</span> to your site URL (e.g. in Vercel
+                          env or <span className="font-mono">.env.local</span>) so invite links and QR codes can be
+                          generated.
+                        </p>
+                      )}
                     </div>
                   ) : null}
                   <div className="space-y-2">

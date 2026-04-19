@@ -1,8 +1,18 @@
+import { getAppOrigin } from "@/lib/app-origin";
 import { getClerkUserLabel } from "@/lib/clerk-display-name";
 import { findUserIdByEmail } from "@/lib/clerk-find-user-by-email";
+import { ensureInviteToken, rotateInviteToken } from "@/lib/diary-share-invite";
 import { ensureDiarySharingTables, hasDatabaseConfig } from "@/lib/diary-sharing-db";
 import { getDb } from "@/lib/db";
 import { requireAuthUserId } from "@/lib/require-auth";
+
+async function inviteUrlForOwner(db, userId, enabled) {
+  if (!enabled) return null;
+  const origin = getAppOrigin();
+  if (!origin) return null;
+  const token = await ensureInviteToken(db, userId);
+  return `${origin}/share/join?t=${encodeURIComponent(token)}`;
+}
 
 function noDbResponse() {
   return Response.json(
@@ -38,7 +48,8 @@ export async function GET() {
         label: await getClerkUserLabel(viewerUserId)
       }))
     );
-    return Response.json({ enabled, shareDisplayName, grantedTo, grants });
+    const inviteUrl = await inviteUrlForOwner(db, userId, enabled);
+    return Response.json({ enabled, shareDisplayName, grantedTo, grants, inviteUrl });
   } catch (error) {
     console.error("GET /api/me/sharing failed", error);
     return Response.json({ error: "Failed to load sharing settings" }, { status: 500 });
@@ -49,6 +60,7 @@ export async function GET() {
  * Body: { enabled?: boolean, shareDisplayName?: string, grantUserId?: string, grantEmail?: string, revokeUserId?: string }
  * — shareDisplayName: how this owner appears in others’ shared-diary lists (max 80 chars).
  * — grantEmail looks up the viewer in Clerk by email; grantUserId is optional fallback (e.g. support).
+ * — rotateInviteToken: issue a new secret token (invalidates old QR/links).
  */
 export async function PATCH(request) {
   const authResult = await requireAuthUserId();
@@ -109,6 +121,10 @@ export async function PATCH(request) {
       `;
     }
 
+    if (body?.rotateInviteToken === true) {
+      await rotateInviteToken(db, userId);
+    }
+
     let grantTargetId = "";
     if (grantEmailRaw) {
       const found = await findUserIdByEmail(grantEmailRaw);
@@ -155,11 +171,14 @@ export async function PATCH(request) {
       }))
     );
 
+    const inviteUrl = await inviteUrlForOwner(db, userId, outEnabled);
+
     return Response.json({
       enabled: outEnabled,
       shareDisplayName: outShareDisplayName,
       grantedTo,
-      grants
+      grants,
+      inviteUrl
     });
   } catch (error) {
     console.error("PATCH /api/me/sharing failed", error);
