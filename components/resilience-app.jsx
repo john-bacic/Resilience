@@ -1046,8 +1046,6 @@ export default function ResilienceApp() {
   const [diaryInsightsLoading, setDiaryInsightsLoading] = useState(false);
   const [diaryInsightsError, setDiaryInsightsError] = useState(null);
   const diaryInsightsReqIdRef = useRef(0);
-  /** `diaryEntryIdsKey` we last successfully loaded insights for — avoids refetch on every Progress visit. */
-  const diaryInsightsFetchedForKeyRef = useRef(null);
   const diaryEditModalWasOpenRef = useRef(false);
   const isAnyModalOpen =
     reflectionOpen ||
@@ -1651,56 +1649,39 @@ export default function ResilienceApp() {
       }));
   }, [app.diary]);
 
-  const fetchDiaryInsights = useCallback(
-    async (force = false) => {
-      if (diaryInsightsPayload.length === 0) {
-        setDiaryInsights(null);
-        diaryInsightsFetchedForKeyRef.current = null;
-        return;
-      }
-      if (!force && diaryEntryIdsKey === diaryInsightsFetchedForKeyRef.current) {
-        return;
-      }
-      const reqId = ++diaryInsightsReqIdRef.current;
-      setDiaryInsightsLoading(true);
-      setDiaryInsightsError(null);
-      try {
-        const res = await fetch("/api/diary-insights", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ entries: diaryInsightsPayload })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(typeof data.error === "string" ? data.error : res.statusText || "Request failed");
-        }
-        if (reqId !== diaryInsightsReqIdRef.current) return;
-        setDiaryInsights(data);
-        diaryInsightsFetchedForKeyRef.current = diaryEntryIdsKey;
-      } catch (e) {
-        if (reqId !== diaryInsightsReqIdRef.current) return;
-        setDiaryInsightsError(e instanceof Error ? e.message : "Could not load insights");
-      } finally {
-        if (reqId === diaryInsightsReqIdRef.current) setDiaryInsightsLoading(false);
-      }
-    },
-    [diaryInsightsPayload, diaryEntryIdsKey]
-  );
-
-  /** Auto-fetch only when diary entry set changes (new/remove entry), not on every Progress tab visit. */
-  useEffect(() => {
-    if (tab !== "progress") return;
+  const fetchDiaryInsights = useCallback(async () => {
     if (diaryInsightsPayload.length === 0) {
       setDiaryInsights(null);
-      diaryInsightsFetchedForKeyRef.current = null;
       return;
     }
-    if (diaryEntryIdsKey === diaryInsightsFetchedForKeyRef.current) return;
-    const t = setTimeout(() => {
-      void fetchDiaryInsights(false);
-    }, 400);
-    return () => clearTimeout(t);
-  }, [tab, diaryEntryIdsKey, diaryInsightsPayload.length, fetchDiaryInsights]);
+    const reqId = ++diaryInsightsReqIdRef.current;
+    setDiaryInsightsLoading(true);
+    setDiaryInsightsError(null);
+    try {
+      const res = await fetch("/api/diary-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries: diaryInsightsPayload })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : res.statusText || "Request failed");
+      }
+      if (reqId !== diaryInsightsReqIdRef.current) return;
+      setDiaryInsights(data);
+    } catch (e) {
+      if (reqId !== diaryInsightsReqIdRef.current) return;
+      setDiaryInsightsError(e instanceof Error ? e.message : "Could not load insights");
+    } finally {
+      if (reqId === diaryInsightsReqIdRef.current) setDiaryInsightsLoading(false);
+    }
+  }, [diaryInsightsPayload]);
+
+  /** Clear stale analysis when entries are added/removed; user runs Analyze again. */
+  useEffect(() => {
+    setDiaryInsights(null);
+    setDiaryInsightsError(null);
+  }, [diaryEntryIdsKey]);
 
   const weeklySummary = useMemo(() => {
     const focus = weekFocus(currentProgramDay);
@@ -3009,12 +2990,34 @@ export default function ResilienceApp() {
                             variant="outline"
                             className="h-8 shrink-0 gap-1.5 px-2 text-xs"
                             disabled={diaryInsightsLoading || diaryInsightsPayload.length === 0}
-                            onClick={() => void fetchDiaryInsights(true)}
+                            onClick={() => void fetchDiaryInsights()}
                           >
-                            <RefreshCw className={`h-3.5 w-3.5 ${diaryInsightsLoading ? "animate-spin" : ""}`} />
-                            Refresh
+                            {diaryInsights ? (
+                              <>
+                                <RefreshCw className={`h-3.5 w-3.5 ${diaryInsightsLoading ? "animate-spin" : ""}`} />
+                                Refresh
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className={`h-3.5 w-3.5 ${diaryInsightsLoading ? "animate-spin" : ""}`} />
+                                Analyze
+                              </>
+                            )}
                           </Button>
                         </div>
+                        {!diaryInsightsLoading &&
+                          !diaryInsightsError &&
+                          !diaryInsights &&
+                          diaryInsightsPayload.length > 0 && (
+                            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                              Tap Analyze to generate a read from your journal. Nothing is sent until you do.
+                            </p>
+                          )}
+                        {!diaryInsightsLoading && diaryInsightsPayload.length === 0 && (
+                          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                            Add journal entries to run an analysis.
+                          </p>
+                        )}
                         {diaryInsightsLoading && (
                           <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Taking a pass through what you wrote…</p>
                         )}
