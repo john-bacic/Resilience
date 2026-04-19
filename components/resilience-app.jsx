@@ -25,7 +25,6 @@ import {
   X
 } from "lucide-react";
 import QRCode from "react-qr-code";
-import { detectStepsStrict, stepIdsFromFlags, STEP_LABELS } from "@/lib/trigger-steps";
 
 const SCENARIOS = [
   "Someone does not reply to your message.",
@@ -331,46 +330,6 @@ function diaryTitleDisplay(entry) {
     }
   }
   return t || "Untitled entry";
-}
-
-function entryTextForStepPatterns(entry) {
-  return [
-    entry.story,
-    entry.fact,
-    entry.scenario,
-    entry.lesson,
-    diaryTitleDisplay(entry),
-    entry.rawText,
-    entry.chosenResponse,
-    entry.outsideControl,
-    entry.insideControl
-  ]
-    .map((x) => (x != null ? String(x) : ""))
-    .join("\n");
-}
-
-function effectiveTriggeredStepIds(entry) {
-  const raw = entry.triggeredSteps;
-  if (Array.isArray(raw) && raw.length > 0) {
-    const filtered = raw.filter((s) => s === "step1" || s === "step2" || s === "step3");
-    if (filtered.length > 0) return filtered;
-  }
-  return stepIdsFromFlags(detectStepsStrict(entryTextForStepPatterns(entry)));
-}
-
-/**
- * Buckets `entry.story` text so similar wording counts together: lowercase, collapse
- * whitespace, take the first sentence fragment (split on . ! ?), cap length.
- * Not semantic AI — pure string clustering.
- */
-function storyThemeKey(story) {
-  const s = String(story || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-  if (!s) return "";
-  const first = s.split(/[.!?]+/)[0]?.trim() || s;
-  return first.slice(0, 120);
 }
 
 /** Log-style diary rows ("Log what happened?" / legacy raw-text saves). */
@@ -1083,10 +1042,6 @@ export default function ResilienceApp() {
   const [ownerReactionsLoading, setOwnerReactionsLoading] = useState(false);
   /** entryId → counts from GET /api/me/sharing/reactions (summary) for diary list indicators */
   const [diaryEntryReactionsSummary, setDiaryEntryReactionsSummary] = useState({});
-  const [diaryInsights, setDiaryInsights] = useState(null);
-  const [diaryInsightsLoading, setDiaryInsightsLoading] = useState(false);
-  const [diaryInsightsError, setDiaryInsightsError] = useState(null);
-  const diaryInsightsReqIdRef = useRef(0);
   const diaryEditModalWasOpenRef = useRef(false);
   const isAnyModalOpen =
     reflectionOpen ||
@@ -1634,21 +1589,6 @@ export default function ResilienceApp() {
   );
   const diaryStats = useMemo(() => {
     const total = app.diary.length;
-    const stepCounts = { step1: 0, step2: 0, step3: 0 };
-    app.diary.forEach((entry) => {
-      effectiveTriggeredStepIds(entry).forEach((step) => {
-        if (stepCounts[step] !== undefined) stepCounts[step] += 1;
-      });
-    });
-    const rankedSteps = Object.entries(stepCounts).sort((a, b) => b[1] - a[1]);
-    const topStepEntry = rankedSteps[0];
-    const topStep = topStepEntry && topStepEntry[1] > 0 ? topStepEntry[0] : null;
-    const topStepLabel = topStep ? STEP_LABELS[topStep] : "—";
-    const topStepCount = topStep ? stepCounts[topStep] : 0;
-    const mostTriggeredDisplay =
-      topStep && topStepCount > 0
-        ? `${topStepLabel} (${topStepCount}×)`
-        : "Not enough step signals yet — keep logging or use Analyze on the Log flow.";
 
     let moodShiftSum = 0;
     let moodShiftCount = 0;
@@ -1677,111 +1617,13 @@ export default function ResilienceApp() {
       }
     }
 
-    const storyBuckets = new Map();
-    let entriesWithStoryText = 0;
-    app.diary.forEach((entry) => {
-      const raw = String(entry.story || "").trim();
-      if (!raw) return;
-      entriesWithStoryText += 1;
-      const key = storyThemeKey(raw);
-      if (!key) return;
-      const display = raw.length > 90 ? `${raw.slice(0, 87).trim()}…` : raw;
-      const prev = storyBuckets.get(key);
-      if (!prev) storyBuckets.set(key, { count: 1, display });
-      else storyBuckets.set(key, { count: prev.count + 1, display: prev.display });
-    });
-    const sortedStoryBuckets = [...storyBuckets.entries()].sort((a, b) => b[1].count - a[1].count);
-    const maxStoryCount = sortedStoryBuckets[0]?.[1]?.count ?? 0;
-    const tiedAtMax =
-      maxStoryCount > 0 ? sortedStoryBuckets.filter(([, v]) => v.count === maxStoryCount) : [];
-
-    let topStory;
-    if (entriesWithStoryText === 0) {
-      topStory = "No story text logged yet.";
-    } else if (maxStoryCount < 2) {
-      topStory =
-        entriesWithStoryText === 1
-          ? "No common story theme — only one entry has a story so far."
-          : "No common story theme — no line repeats across entries yet (first-line clusters are all unique).";
-    } else if (tiedAtMax.length > 1) {
-      topStory = `No single most common theme — ${tiedAtMax.length} clusters tie at ${maxStoryCount}× each.`;
-    } else {
-      const [, bucket] = tiedAtMax[0];
-      topStory = `${bucket.display} (${bucket.count}×)`;
-    }
-
     return {
       total,
-      topStep,
-      topStepLabel,
-      topStepCount,
-      mostTriggeredDisplay,
       averageShift,
       averageShiftLabel,
-      moodShiftSampleCount: moodShiftCount,
-      topStory
+      moodShiftSampleCount: moodShiftCount
     };
   }, [app.diary]);
-
-  const diaryInsightsPayload = useMemo(() => {
-    return app.diary
-      .slice()
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, 60)
-      .map((e) => ({
-        id: e.id,
-        createdAt: e.createdAt,
-        source: e.source,
-        story: String(e.story || "").slice(0, 500),
-        fact: String(e.fact || "").slice(0, 300),
-        lesson: String(e.lesson || "").slice(0, 300),
-        scenario: String(e.scenario || "").slice(0, 300),
-        moodBefore: e.moodBefore,
-        moodAfter: e.moodAfter,
-        triggeredSteps: e.triggeredSteps,
-        rawText: String(e.rawText || "").slice(0, 400)
-      }));
-  }, [app.diary]);
-
-  const fetchDiaryInsights = useCallback(async () => {
-    if (diaryInsightsPayload.length === 0) {
-      setDiaryInsights(null);
-      return;
-    }
-    const reqId = ++diaryInsightsReqIdRef.current;
-    setDiaryInsightsLoading(true);
-    setDiaryInsightsError(null);
-    try {
-      const res = await fetch("/api/diary-insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entries: diaryInsightsPayload })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : res.statusText || "Request failed");
-      }
-      if (reqId !== diaryInsightsReqIdRef.current) return;
-      setDiaryInsights(data);
-    } catch (e) {
-      if (reqId !== diaryInsightsReqIdRef.current) return;
-      setDiaryInsightsError(e instanceof Error ? e.message : "Could not load insights");
-    } finally {
-      if (reqId === diaryInsightsReqIdRef.current) setDiaryInsightsLoading(false);
-    }
-  }, [diaryInsightsPayload]);
-
-  useEffect(() => {
-    if (tab !== "progress") return;
-    if (diaryInsightsPayload.length === 0) {
-      setDiaryInsights(null);
-      return;
-    }
-    const t = setTimeout(() => {
-      void fetchDiaryInsights();
-    }, 400);
-    return () => clearTimeout(t);
-  }, [tab, diaryInsightsPayload, fetchDiaryInsights]);
 
   const weeklySummary = useMemo(() => {
     const focus = weekFocus(currentProgramDay);
@@ -3059,16 +2901,6 @@ export default function ResilienceApp() {
                       <p
                         className="text-sm text-slate-700 dark:text-slate-300"
                         title={
-                          diaryStats.topStep
-                            ? `${diaryStats.topStepLabel} — counted once per entry when that step appears (saved or detected from text).`
-                            : undefined
-                        }
-                      >
-                        Most triggered: {diaryStats.mostTriggeredDisplay}
-                      </p>
-                      <p
-                        className="text-sm text-slate-700 dark:text-slate-300"
-                        title={
                           diaryStats.moodShiftSampleCount > 0
                             ? `Average step change on 1–12 mood scale: ${
                                 Number(diaryStats.averageShift) >= 0 ? "+" : ""
@@ -3080,61 +2912,6 @@ export default function ResilienceApp() {
                       >
                         Average mood shift: {diaryStats.averageShiftLabel}
                       </p>
-                      <p
-                        className="text-sm text-slate-700 dark:text-slate-300"
-                        title="Uses only the Story field. Entries are grouped by a normalized first line (see storyThemeKey). A “common” theme is shown only if the same cluster appears at least twice — never invented."
-                      >
-                        Most common story theme: {diaryStats.topStory}
-                      </p>
-
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-800/50">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                              AI pattern read
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
-                              Uses your last 60 entries (same model as Analyze when configured).
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 shrink-0 gap-1.5 px-2 text-xs"
-                            disabled={diaryInsightsLoading || diaryInsightsPayload.length === 0}
-                            onClick={() => void fetchDiaryInsights()}
-                          >
-                            <RefreshCw className={`h-3.5 w-3.5 ${diaryInsightsLoading ? "animate-spin" : ""}`} />
-                            Refresh
-                          </Button>
-                        </div>
-                        {diaryInsightsLoading && (
-                          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Reading your journal…</p>
-                        )}
-                        {diaryInsightsError && (
-                          <p className="mt-3 text-sm text-red-600 dark:text-red-400">{diaryInsightsError}</p>
-                        )}
-                        {diaryInsights && !diaryInsightsLoading && (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-sm text-slate-700 dark:text-slate-300">{diaryInsights.overview}</p>
-                            {Array.isArray(diaryInsights.patterns) && diaryInsights.patterns.length > 0 && (
-                              <ul className="list-inside list-disc space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                                {diaryInsights.patterns.map((p, i) => (
-                                  <li key={i}>{p}</li>
-                                ))}
-                              </ul>
-                            )}
-                            {diaryInsights.caveat && (
-                              <p className="text-xs text-slate-500 dark:text-slate-500">{diaryInsights.caveat}</p>
-                            )}
-                            {diaryInsights.source === "fallback" && (
-                              <p className="text-xs text-amber-800 dark:text-amber-300/90">
-                                Summary mode (no API key). Set ANTHROPIC_API_KEY for full narrative insights.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
                     </CardContent>
                   </Card>
                 </div>
