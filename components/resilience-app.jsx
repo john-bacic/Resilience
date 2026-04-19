@@ -1042,6 +1042,10 @@ export default function ResilienceApp() {
   const [ownerReactionsLoading, setOwnerReactionsLoading] = useState(false);
   /** entryId → counts from GET /api/me/sharing/reactions (summary) for diary list indicators */
   const [diaryEntryReactionsSummary, setDiaryEntryReactionsSummary] = useState({});
+  const [diaryInsights, setDiaryInsights] = useState(null);
+  const [diaryInsightsLoading, setDiaryInsightsLoading] = useState(false);
+  const [diaryInsightsError, setDiaryInsightsError] = useState(null);
+  const diaryInsightsReqIdRef = useRef(0);
   const diaryEditModalWasOpenRef = useRef(false);
   const isAnyModalOpen =
     reflectionOpen ||
@@ -1624,6 +1628,66 @@ export default function ResilienceApp() {
       moodShiftSampleCount: moodShiftCount
     };
   }, [app.diary]);
+
+  const diaryInsightsPayload = useMemo(() => {
+    return app.diary
+      .slice()
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 60)
+      .map((e) => ({
+        id: e.id,
+        createdAt: e.createdAt,
+        source: e.source,
+        story: String(e.story || "").slice(0, 500),
+        fact: String(e.fact || "").slice(0, 300),
+        lesson: String(e.lesson || "").slice(0, 300),
+        scenario: String(e.scenario || "").slice(0, 300),
+        moodBefore: e.moodBefore,
+        moodAfter: e.moodAfter,
+        triggeredSteps: e.triggeredSteps,
+        rawText: String(e.rawText || "").slice(0, 400)
+      }));
+  }, [app.diary]);
+
+  const fetchDiaryInsights = useCallback(async () => {
+    if (diaryInsightsPayload.length === 0) {
+      setDiaryInsights(null);
+      return;
+    }
+    const reqId = ++diaryInsightsReqIdRef.current;
+    setDiaryInsightsLoading(true);
+    setDiaryInsightsError(null);
+    try {
+      const res = await fetch("/api/diary-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries: diaryInsightsPayload })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : res.statusText || "Request failed");
+      }
+      if (reqId !== diaryInsightsReqIdRef.current) return;
+      setDiaryInsights(data);
+    } catch (e) {
+      if (reqId !== diaryInsightsReqIdRef.current) return;
+      setDiaryInsightsError(e instanceof Error ? e.message : "Could not load insights");
+    } finally {
+      if (reqId === diaryInsightsReqIdRef.current) setDiaryInsightsLoading(false);
+    }
+  }, [diaryInsightsPayload]);
+
+  useEffect(() => {
+    if (tab !== "progress") return;
+    if (diaryInsightsPayload.length === 0) {
+      setDiaryInsights(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      void fetchDiaryInsights();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [tab, diaryInsightsPayload, fetchDiaryInsights]);
 
   const weeklySummary = useMemo(() => {
     const focus = weekFocus(currentProgramDay);
@@ -2912,6 +2976,55 @@ export default function ResilienceApp() {
                       >
                         Average mood shift: {diaryStats.averageShiftLabel}
                       </p>
+
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              AI pattern read
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                              Uses your last 60 entries (same model as Analyze when configured).
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                            disabled={diaryInsightsLoading || diaryInsightsPayload.length === 0}
+                            onClick={() => void fetchDiaryInsights()}
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 ${diaryInsightsLoading ? "animate-spin" : ""}`} />
+                            Refresh
+                          </Button>
+                        </div>
+                        {diaryInsightsLoading && (
+                          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Reading your journal…</p>
+                        )}
+                        {diaryInsightsError && (
+                          <p className="mt-3 text-sm text-red-600 dark:text-red-400">{diaryInsightsError}</p>
+                        )}
+                        {diaryInsights && !diaryInsightsLoading && (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-sm text-slate-700 dark:text-slate-300">{diaryInsights.overview}</p>
+                            {Array.isArray(diaryInsights.patterns) && diaryInsights.patterns.length > 0 && (
+                              <ul className="list-inside list-disc space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                                {diaryInsights.patterns.map((p, i) => (
+                                  <li key={i}>{p}</li>
+                                ))}
+                              </ul>
+                            )}
+                            {diaryInsights.caveat && (
+                              <p className="text-xs text-slate-500 dark:text-slate-500">{diaryInsights.caveat}</p>
+                            )}
+                            {diaryInsights.source === "fallback" && (
+                              <p className="text-xs text-amber-800 dark:text-amber-300/90">
+                                Summary mode (no API key). Set ANTHROPIC_API_KEY for full narrative insights.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
