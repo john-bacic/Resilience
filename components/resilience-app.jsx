@@ -2984,7 +2984,11 @@ export default function ResilienceApp() {
                               AI pattern read
                             </p>
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
-                              Like a friend reading your journal back to you — from your last 60 entries (same model as Analyze when set up).
+                              {app.diary.length === 0
+                                ? "No entries yet."
+                                : `From your last ${app.diary.length} ${
+                                    app.diary.length === 1 ? "entry" : "entries"
+                                  }.`}
                             </p>
                           </div>
                           <Button

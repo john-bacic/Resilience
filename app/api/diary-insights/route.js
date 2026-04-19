@@ -13,6 +13,17 @@ function cleanJsonText(text) {
     .trim();
 }
 
+/** Strips common AI hedges / “open invitation” closers the product doesn’t want shown. */
+function stripUnwantedInsightPhrases(text) {
+  let s = String(text || "");
+  // "But there may be more going on beneath the surface… let me know if… talk through"
+  s = s.replace(
+    /\s*(?:But\s+)?there\s+may\s+be\s+more\s+going\s+on\s+beneath\s+the\s+surface\s+that\s+I['']m\s+not\s+seeing\s*[-–—]\s*let\s+me\s+know\s+if\s+there['']s\s+anything\s+else\s+you\s+want\s+to\s+talk\s+through\.?/gi,
+    ""
+  );
+  return s.replace(/\s{2,}/g, " ").trim();
+}
+
 function fallbackFromEntries(entries) {
   const stepCounts = { step1: 0, step2: 0, step3: 0 };
   let moodShifts = 0;
@@ -122,7 +133,7 @@ Stay 100% grounded in the entries — no invented events or emotions. If the dat
 Return strict JSON only with these keys:
 - overview: one paragraph, 2–5 short sentences, every sentence addressed to "you".
 - patterns: array of 3–6 strings; each line speaks to "you" (like gentle observations a friend would make), not about "the writer".
-- caveat: one sentence, still second person or "I" talking to you — never third person about the reader.
+- caveat: **one short sentence** about limits of what you can see from the text (e.g. missing context). **Do not** invite ongoing conversation, therapy follow-ups, or lines like "beneath the surface", "let me know if you want to talk", "let me know if there's anything else", or similar — end cleanly.
 
 Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bullet labels like "Observation 1".`,
         messages: [
@@ -149,13 +160,13 @@ Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bulle
       return Response.json(fallbackFromEntries(entries));
     }
 
-    const overview = String(parsed?.overview || "").trim();
-    const patterns = Array.isArray(parsed?.patterns)
-      ? parsed.patterns.map((p) => String(p || "").trim()).filter(Boolean)
+    let overview = stripUnwantedInsightPhrases(String(parsed?.overview || "").trim());
+    const patternsRaw = Array.isArray(parsed?.patterns)
+      ? parsed.patterns.map((p) => stripUnwantedInsightPhrases(String(p || "").trim())).filter(Boolean)
       : [];
-    const caveat = String(parsed?.caveat || "").trim();
+    let caveat = stripUnwantedInsightPhrases(String(parsed?.caveat || "").trim());
 
-    if (!overview && patterns.length === 0) {
+    if (!overview && patternsRaw.length === 0) {
       return Response.json(fallbackFromEntries(entries));
     }
 
@@ -163,9 +174,9 @@ Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bulle
       source: "ai",
       overview:
         overview ||
-        patterns[0] ||
+        patternsRaw[0] ||
         "I read what you logged — there’s more in here than a one-line summary can catch, but I’m glad you’re writing it down.",
-      patterns: patterns.slice(0, 8),
+      patterns: patternsRaw.slice(0, 8),
       caveat:
         caveat ||
         "I only know what made it into these entries — anything you didn’t write down, I’m guessing at."
