@@ -17,9 +17,25 @@ const clerkAppearance = {
   }
 };
 
+/** Align Clerk redirect validation with NEXT_PUBLIC_APP_URL (Vercel / custom domain). */
+const allowedRedirectOrigins = (() => {
+  const raw = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (!raw) return undefined;
+  try {
+    const u = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    return [`${u.protocol}//${u.host}`];
+  } catch {
+    return undefined;
+  }
+})();
+
 export default function AppProviders({ children }) {
   return (
-    <ClerkProvider dynamic appearance={clerkAppearance}>
+    <ClerkProvider
+      dynamic
+      appearance={clerkAppearance}
+      {...(allowedRedirectOrigins ? { allowedRedirectOrigins } : {})}
+    >
       {children}
     </ClerkProvider>
   );
