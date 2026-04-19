@@ -1877,9 +1877,14 @@ export default function ResilienceApp() {
     ...Array.from({ length: firstWeekday }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
   ];
-  const progressCalCompletedClass =
-    "border-emerald-500 bg-emerald-100 text-emerald-900 dark:border-emerald-400 dark:bg-emerald-900/40 dark:text-emerald-100";
-  const progressCalTodayClass =
+  /** Past (or any non-today) day with diary entries — softer green. */
+  const progressCalPastCompletedClass =
+    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200";
+  /** Today with at least one entry — stronger green (stands out from past days). */
+  const progressCalTodayWithEntriesClass =
+    "border-2 border-emerald-500 bg-emerald-100 text-emerald-900 dark:border-emerald-400 dark:bg-emerald-900/40 dark:text-emerald-100";
+  /** Today with no entries — pink fill, red border/text. */
+  const progressCalTodayEmptyClass =
     "border-2 border-red-600 bg-pink-100 text-red-700 dark:border-red-500 dark:bg-pink-950 dark:text-red-200";
 
   const profileDraftComputedAge = calculateAgeFromBirthday(profileDraft.birthday);
@@ -2355,11 +2360,13 @@ export default function ResilienceApp() {
                                 onClick={() => setSelectedProgressDate(dateKey)}
                                 className={`h-8 rounded-lg border text-xs font-medium transition ${
                                   isToday
-                                    ? progressCalTodayClass
+                                    ? hasEntries
+                                      ? progressCalTodayWithEntriesClass
+                                      : progressCalTodayEmptyClass
                                     : isSelected
                                       ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
                                       : hasEntries
-                                        ? progressCalCompletedClass
+                                        ? progressCalPastCompletedClass
                                         : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                                 }`}
                               >
