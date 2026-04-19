@@ -45,15 +45,33 @@ const hasClerkPublishableKey = Boolean(
 /** Local dev: set in `.env.local` so `/` loads without signing in (API may still 401 until signed in). */
 const skipAuthProtect = process.env.SKIP_CLERK_PROTECT === "true";
 
+/**
+ * Prefer explicit session checks over `auth.protect()` so dev instances don’t surface
+ * `dev-browser-missing` as an opaque 500 during SSR / first load (see Clerk AuthErrorReason).
+ */
 const clerkAuth = hasClerkPublishableKey
   ? clerkMiddleware(async (auth, req) => {
-      if (!isPublicRoute(req) && !skipAuthProtect) {
-        await auth.protect();
+      if (skipAuthProtect || isPublicRoute(req)) {
+        return;
       }
+      const { userId } = await auth();
+      if (userId) {
+        return;
+      }
+      const path = req.nextUrl.pathname;
+      if (path.startsWith("/api/")) {
+        return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
+        });
+      }
+      const signIn = new URL("/sign-in", req.url);
+      signIn.searchParams.set("redirect_url", `${req.nextUrl.pathname}${req.nextUrl.search}`);
+      return NextResponse.redirect(signIn);
     })
   : null;
 
-export default function middleware(req: NextRequest, event: NextFetchEvent) {
+export default async function middleware(req: NextRequest, event: NextFetchEvent) {
   if (shouldSkipClerk(req.nextUrl.pathname)) {
     return NextResponse.next();
   }

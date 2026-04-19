@@ -112,6 +112,18 @@ function normalizeAppState(raw) {
   }
 }
 
+/** Normalize GET/PATCH /api/me/sharing JSON into { enabled, shareDisplayName, grants }. */
+function normalizeSharingApiPayload(data) {
+  const enabled = Boolean(data?.enabled);
+  const shareDisplayName = typeof data?.shareDisplayName === "string" ? data.shareDisplayName : "";
+  const grants = Array.isArray(data?.grants)
+    ? data.grants
+        .filter((g) => g && typeof g.userId === "string")
+        .map((g) => ({ userId: g.userId, label: typeof g.label === "string" ? g.label : g.userId }))
+    : (Array.isArray(data?.grantedTo) ? data.grantedTo : []).map((userId) => ({ userId, label: userId }));
+  return { enabled, shareDisplayName, grants };
+}
+
 function weekFocus(day) {
   if (day <= 7) return "Facts vs Story";
   if (day <= 14) return "Control Filter";
@@ -966,7 +978,9 @@ export default function ResilienceApp() {
   const [sharingSettings, setSharingSettings] = useState(null);
   const [sharingLoadError, setSharingLoadError] = useState(null);
   const [sharingBusy, setSharingBusy] = useState(false);
-  const [grantUserIdInput, setGrantUserIdInput] = useState("");
+  const [grantEmailInput, setGrantEmailInput] = useState("");
+  const [grantAdvancedUserIdInput, setGrantAdvancedUserIdInput] = useState("");
+  const [shareDisplayNameDraft, setShareDisplayNameDraft] = useState("");
   const [sharedDiariesItems, setSharedDiariesItems] = useState([]);
   const [sharedDiariesUnavailable, setSharedDiariesUnavailable] = useState(false);
   const [sharedDiaryModalOpen, setSharedDiaryModalOpen] = useState(false);
@@ -1023,6 +1037,13 @@ export default function ResilienceApp() {
       window.scrollTo(0, scrollY);
     };
   }, [isAnyModalOpen]);
+
+  useEffect(() => {
+    if (!sharingSettings) return;
+    setShareDisplayNameDraft(
+      typeof sharingSettings.shareDisplayName === "string" ? sharingSettings.shareDisplayName : ""
+    );
+  }, [sharingSettings]);
 
   function savePersonalProfile() {
     const birthday = String(profileDraft.birthday || "").trim();
@@ -1773,10 +1794,7 @@ export default function ResilienceApp() {
         return;
       }
       const data = await response.json();
-      setSharingSettings({
-        enabled: Boolean(data?.enabled),
-        grantedTo: Array.isArray(data?.grantedTo) ? data.grantedTo : []
-      });
+      setSharingSettings(normalizeSharingApiPayload(data));
     } catch {
       setSharingLoadError("Could not load sharing settings.");
     }
@@ -1801,11 +1819,9 @@ export default function ResilienceApp() {
         return;
       }
       const data = await response.json();
-      setSharingSettings({
-        enabled: Boolean(data?.enabled),
-        grantedTo: Array.isArray(data?.grantedTo) ? data.grantedTo : []
-      });
-      setGrantUserIdInput("");
+      setSharingSettings(normalizeSharingApiPayload(data));
+      setGrantEmailInput("");
+      setGrantAdvancedUserIdInput("");
     } catch {
       setSharingLoadError("Update failed.");
     } finally {
@@ -3109,7 +3125,8 @@ export default function ResilienceApp() {
               <ModalCloseButton onClick={() => setIsShareModalOpen(false)} />
               <CardTitle>Share</CardTitle>
               <CardDescription>
-                Allow specific people to view your diary entries only (not profile or other app data).
+                Allow specific people to view your diary entries only (not profile or other app data). Turn on sharing
+                below, choose how your name appears, then add people by email.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -3132,45 +3149,105 @@ export default function ResilienceApp() {
                       Let allowlisted people read my diary
                     </span>
                   </label>
+                  {sharingSettings.enabled ? (
+                    <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/90 p-3 dark:border-slate-600 dark:bg-slate-800/60">
+                      <label htmlFor="share-display-name" className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                        Name others see when you share
+                      </label>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        This is how you show up in their &quot;View someone else&apos;s diary&quot; list. Leave blank to use
+                        your account name from Clerk.
+                      </p>
+                      <input
+                        id="share-display-name"
+                        type="text"
+                        value={shareDisplayNameDraft}
+                        onChange={(e) => setShareDisplayNameDraft(e.target.value)}
+                        onBlur={() => {
+                          const next = shareDisplayNameDraft.trim();
+                          const prev = (sharingSettings.shareDisplayName || "").trim();
+                          if (next === prev) return;
+                          void applySharingPatch({ shareDisplayName: next });
+                        }}
+                        maxLength={80}
+                        placeholder="e.g. Alex"
+                        disabled={sharingBusy}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Grant access (Clerk user id)</p>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Grant access by email</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      They must already have signed up to this app with that email. There is no public directory of
+                      users—only exact lookup.
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       <input
-                        type="text"
-                        value={grantUserIdInput}
-                        onChange={(e) => setGrantUserIdInput(e.target.value)}
-                        placeholder="user_..."
+                        type="email"
+                        autoComplete="email"
+                        value={grantEmailInput}
+                        onChange={(e) => setGrantEmailInput(e.target.value)}
+                        placeholder="friend@example.com"
                         className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
                       />
                       <Button
                         type="button"
-                        disabled={sharingBusy || !grantUserIdInput.trim()}
-                        onClick={() => void applySharingPatch({ grantUserId: grantUserIdInput.trim() })}
+                        disabled={
+                          sharingBusy || (!grantEmailInput.trim() && !grantAdvancedUserIdInput.trim())
+                        }
+                        onClick={() => {
+                          const adv = grantAdvancedUserIdInput.trim();
+                          if (adv) {
+                            void applySharingPatch({ grantUserId: adv });
+                          } else {
+                            void applySharingPatch({ grantEmail: grantEmailInput.trim() });
+                          }
+                        }}
                       >
                         Add
                       </Button>
                     </div>
+                    <details className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs dark:border-slate-600 dark:bg-slate-800/60">
+                      <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-400">
+                        Advanced: Clerk user id
+                      </summary>
+                      <p className="mt-2 text-slate-500 dark:text-slate-400">
+                        Rarely needed—e.g. if email lookup fails. Ask them to copy it from Clerk Dashboard → Users →
+                        their account, or from their session if you expose it.
+                      </p>
+                      <input
+                        type="text"
+                        value={grantAdvancedUserIdInput}
+                        onChange={(e) => setGrantAdvancedUserIdInput(e.target.value)}
+                        placeholder="user_..."
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                      />
+                    </details>
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Can view your diary</p>
-                    {sharingSettings.grantedTo.length === 0 ? (
+                    {sharingSettings.grants.length === 0 ? (
                       <p className="text-sm text-slate-500 dark:text-slate-400">Nobody yet.</p>
                     ) : (
                       <ul className="space-y-2">
-                        {sharingSettings.grantedTo.map((uid) => (
+                        {sharingSettings.grants.map((g) => (
                           <li
-                            key={uid}
+                            key={g.userId}
                             className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
                           >
-                            <span className="min-w-0 truncate font-mono text-xs" title={uid}>
-                              {uid}
-                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-slate-900 dark:text-slate-100">{g.label}</p>
+                              <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={g.userId}>
+                                {g.userId}
+                              </p>
+                            </div>
                             <Button
                               variant="outline"
                               className="shrink-0 px-2 py-1 text-xs"
                               type="button"
                               disabled={sharingBusy}
-                              onClick={() => void applySharingPatch({ revokeUserId: uid })}
+                              onClick={() => void applySharingPatch({ revokeUserId: g.userId })}
                             >
                               Revoke
                             </Button>

@@ -22,19 +22,20 @@ export async function GET() {
     const db = getDb();
     await ensureDiarySharingTables(db);
     const rows = await db`
-      SELECT g.owner_user_id
+      SELECT g.owner_user_id, s.share_display_name
       FROM diary_share_grants g
       INNER JOIN diary_share_settings s ON s.user_id = g.owner_user_id
       WHERE g.viewer_user_id = ${userId}
         AND s.enabled = true
       ORDER BY g.created_at ASC;
     `;
-    const ownerIds = rows.map((r) => r.owner_user_id);
     const items = await Promise.all(
-      ownerIds.map(async (ownerId) => ({
-        ownerId,
-        label: await getClerkUserLabel(ownerId)
-      }))
+      rows.map(async (r) => {
+        const ownerId = r.owner_user_id;
+        const custom = String(r.share_display_name ?? "").trim();
+        const label = custom || (await getClerkUserLabel(ownerId));
+        return { ownerId, label };
+      })
     );
     return Response.json({ items });
   } catch (error) {
