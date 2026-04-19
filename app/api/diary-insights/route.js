@@ -14,7 +14,7 @@ function cleanJsonText(text) {
     .trim();
 }
 
-/** Concatenate all `text` blocks — Claude sometimes splits output across multiple blocks; using only the first breaks JSON.parse. */
+/** Concatenate all `text` blocks (fallback when not using tool_use). */
 function anthropicAssistantText(payload) {
   const blocks = payload?.content;
   if (!Array.isArray(blocks)) return "";
@@ -22,6 +22,23 @@ function anthropicAssistantText(payload) {
     .filter((item) => item?.type === "text" && typeof item.text === "string")
     .map((item) => item.text)
     .join("");
+}
+
+/** Prefer structured tool output — no JSON.parse on prose (avoids parse_error). */
+function extractJournalInsightsToolInput(payload) {
+  const blocks = payload?.content;
+  if (!Array.isArray(blocks)) return null;
+  for (const block of blocks) {
+    if (
+      block?.type === "tool_use" &&
+      block?.name === "submit_journal_insights" &&
+      block?.input &&
+      typeof block.input === "object"
+    ) {
+      return block.input;
+    }
+  }
+  return null;
 }
 
 /**
@@ -206,6 +223,33 @@ export async function POST(request) {
 
   const model = process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307";
 
+  const INSIGHTS_TOOL = {
+    name: "submit_journal_insights",
+    description:
+      "Submit your journal reflection for the user. You must call this tool once with the full analysis — do not reply with raw JSON in chat text.",
+    input_schema: {
+      type: "object",
+      properties: {
+        overview: {
+          type: "string",
+          description:
+            "One paragraph, 2–5 short sentences, second person (you/your), kind friend tone."
+        },
+        patterns: {
+          type: "array",
+          items: { type: "string" },
+          description: "3–6 short lines, each speaking to 'you' gently."
+        },
+        caveat: {
+          type: "string",
+          description:
+            "One short sentence on limits of what you can see from the text. No invitations to 'talk through' more."
+        }
+      },
+      required: ["overview", "patterns", "caveat"]
+    }
+  };
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -216,33 +260,23 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 900,
-        temperature: 0.5,
-        system: `You are replying as a kind, gentle friend who just read this person’s journal — you are talking *to them*, not *about* them.
+        max_tokens: 2048,
+        temperature: 0.45,
+        tools: [INSIGHTS_TOOL],
+        tool_choice: {
+          type: "tool",
+          name: "submit_journal_insights",
+          disable_parallel_tool_use: true
+        },
+        system: `You are a kind, gentle friend who read this person’s journal. Talk *to* them (you/your), never *about* them as "the writer" or third person.
 
-Mandatory voice:
-- Use **only second person**: "you", "your", "you’re". Speak as if you’re sitting with them.
-- **Never** use: "the writer", "the author", "this person", "they/them" (when meaning the person who wrote), "one", or any third-person label for the journal-keeper. If you catch yourself describing them from the outside, rewrite to "you".
-- Tone: warm, gentle, supportive — never clinical, distant, or like a book report.
+Mirror only what appears in the entries. Warm, direct, not clinical.
 
-Mirror what *they* actually wrote (facts from the entries only). Phrases like "it sounds like you…", "I notice you…", "that must have been a lot" are good.
-
-Stay 100% grounded in the entries — no invented events or emotions. If the data is thin, say so kindly in the caveat.
-
-Your entire reply must be ONE valid JSON object only — no markdown fences, no preamble, no text before or after the JSON. Start with { and end with }.
-
-Keys:
-- overview: string, one paragraph, 2–5 short sentences, every sentence addressed to "you".
-- patterns: array of 3–6 strings; each line speaks to "you".
-- caveat: one short sentence about limits of what you can see from the text. No "let me know if you want to talk" or similar.
-
-Escape double quotes inside strings as \\". Use \\n only if needed inside strings.
-
-Avoid: therapy jargon, "analysis indicates", case-study voice.`,
+You must call the tool submit_journal_insights exactly once with overview, patterns, and caveat. Do not paste JSON as plain text in the chat.`,
         messages: [
           {
             role: "user",
-            content: `Journal entries (newest first). Second person only. Output ONLY the JSON object:\n${JSON.stringify(entries)}`
+            content: `Their diary entries (JSON, newest first). Respond only by calling submit_journal_insights:\n${JSON.stringify(entries)}`
           }
         ]
       })
@@ -255,23 +289,32 @@ Avoid: therapy jargon, "analysis indicates", case-study voice.`,
     }
 
     const payload = await response.json();
-    const text = anthropicAssistantText(payload).trim();
-    if (!text) {
-      console.error("[diary-insights] Empty assistant text", JSON.stringify(payload?.content)?.slice(0, 500));
-      return Response.json(fallbackFromEntries(entries, { fallbackReason: "empty_ai" }));
+
+    let parsed = extractJournalInsightsToolInput(payload);
+    if (!parsed) {
+      const text = anthropicAssistantText(payload).trim();
+      if (text) {
+        parsed = parseModelInsightsJson(text);
+      }
+      if (!parsed || typeof parsed !== "object") {
+        console.error(
+          "[diary-insights] No tool_use and text parse failed. stop_reason:",
+          payload?.stop_reason,
+          "content:",
+          JSON.stringify(payload?.content)?.slice(0, 1500)
+        );
+        return Response.json(fallbackFromEntries(entries, { fallbackReason: "parse_error" }));
+      }
     }
 
-    const parsed = parseModelInsightsJson(text);
-    if (!parsed || typeof parsed !== "object") {
-      console.error("[diary-insights] JSON parse failed after repair, raw:", text.slice(0, 1200));
-      return Response.json(fallbackFromEntries(entries, { fallbackReason: "parse_error" }));
-    }
-
-    let overview = stripUnwantedInsightPhrases(String(parsed?.overview || "").trim());
-    const patternsRaw = Array.isArray(parsed?.patterns)
-      ? parsed.patterns.map((p) => stripUnwantedInsightPhrases(String(p || "").trim())).filter(Boolean)
+    let overview = stripUnwantedInsightPhrases(String(parsed?.overview ?? "").trim());
+    let patternsRaw = Array.isArray(parsed?.patterns)
+      ? parsed.patterns.map((p) => stripUnwantedInsightPhrases(String(p ?? "").trim())).filter(Boolean)
       : [];
-    let caveat = stripUnwantedInsightPhrases(String(parsed?.caveat || "").trim());
+    if (patternsRaw.length === 0 && typeof parsed?.patterns === "string" && String(parsed.patterns).trim()) {
+      patternsRaw = [stripUnwantedInsightPhrases(String(parsed.patterns).trim())];
+    }
+    let caveat = stripUnwantedInsightPhrases(String(parsed?.caveat ?? "").trim());
 
     if (!overview && patternsRaw.length === 0) {
       return Response.json(fallbackFromEntries(entries, { fallbackReason: "empty_ai" }));
