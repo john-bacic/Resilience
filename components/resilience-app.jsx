@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Moon,
   NotebookPen,
+  Play,
   RefreshCw,
   Share2,
   Sun,
@@ -1046,6 +1047,8 @@ export default function ResilienceApp() {
   const [diaryInsightsLoading, setDiaryInsightsLoading] = useState(false);
   const [diaryInsightsError, setDiaryInsightsError] = useState(null);
   const diaryInsightsReqIdRef = useRef(0);
+  const [unshakenVideoOpen, setUnshakenVideoOpen] = useState(false);
+  const unshakenVideoRef = useRef(null);
   const diaryEditModalWasOpenRef = useRef(false);
   const isAnyModalOpen =
     reflectionOpen ||
@@ -1056,7 +1059,8 @@ export default function ResilienceApp() {
     Boolean(diaryEditMoodPicker) ||
     isShareModalOpen ||
     sharedDiaryModalOpen ||
-    sharedEntryViewOpen;
+    sharedEntryViewOpen ||
+    unshakenVideoOpen;
 
   useEffect(() => {
     if (typeof document === "undefined" || !isAnyModalOpen) return undefined;
@@ -1099,6 +1103,14 @@ export default function ResilienceApp() {
       typeof sharingSettings.shareDisplayName === "string" ? sharingSettings.shareDisplayName : ""
     );
   }, [sharingSettings]);
+
+  useEffect(() => {
+    if (unshakenVideoOpen) return;
+    if (unshakenVideoRef.current) {
+      unshakenVideoRef.current.pause();
+      unshakenVideoRef.current.currentTime = 0;
+    }
+  }, [unshakenVideoOpen]);
 
   function savePersonalProfile() {
     const birthday = String(profileDraft.birthday || "").trim();
@@ -2587,6 +2599,19 @@ export default function ResilienceApp() {
                       {profileSavedFeedback ? "Saved" : "Save profile context"}
                     </Button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setUnshakenVideoOpen(true)}
+                    className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-950/25"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/50">
+                      <Play className="h-5 w-5 text-emerald-800 dark:text-emerald-300" fill="currentColor" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Unshaken</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Watch the video</p>
+                    </div>
+                  </button>
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Current focus</p>
                   <>
                     <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -3134,6 +3159,37 @@ export default function ResilienceApp() {
           </div>
         </div>
       </div>
+
+      {unshakenVideoOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Unshaken video"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setUnshakenVideoOpen(false);
+          }}
+        >
+          <div className="relative w-full max-w-4xl">
+            <button
+              type="button"
+              onClick={() => setUnshakenVideoOpen(false)}
+              className="absolute right-2 top-2 z-10 rounded-xl bg-black/55 p-2 text-white transition hover:bg-black/75 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+              aria-label="Close video"
+            >
+              <X className="h-5 w-5" strokeWidth={2} />
+            </button>
+            <video
+              ref={unshakenVideoRef}
+              className="max-h-[85vh] w-full rounded-2xl bg-black shadow-2xl ring-1 ring-white/10"
+              controls
+              playsInline
+              preload="metadata"
+              src="/videos/unshaken.mp4"
+            />
+          </div>
+        </div>
+      )}
 
       {reflectionOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
