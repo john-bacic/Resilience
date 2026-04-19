@@ -1,35 +1,5 @@
 import { requireAuthUserId } from "@/lib/require-auth";
-
-const step1Patterns = [
-  "they think",
-  "this means",
-  "i'm not enough",
-  "im not enough",
-  "nobody cares",
-  "no one cares",
-  "always",
-  "never",
-  "everyone",
-  "they hate me",
-  "i feel rejected"
-];
-
-const step2Patterns = ["they should", "it's unfair", "its unfair", "why did they", "they ignored me", "they need to"];
-
-const step3Patterns = ["what do i do", "now what", "i want to text", "i want to quit", "i want to react", "what should i do"];
-
-function detectSteps(text) {
-  const normalized = String(text || "").toLowerCase();
-  const score = (patterns) =>
-    patterns.reduce((total, pattern) => total + (normalized.includes(pattern) ? 1 : 0), 0);
-  const step1 = score(step1Patterns) > 0;
-  const step2 = score(step2Patterns) > 0;
-  const step3 = score(step3Patterns) > 0;
-  if (!step1 && !step2 && !step3) {
-    return { step1: true, step2: false, step3: false };
-  }
-  return { step1, step2, step3 };
-}
+import { detectStepsWithDefault as detectSteps } from "@/lib/trigger-steps";
 
 function fallbackAnalysis(entryText) {
   return {
