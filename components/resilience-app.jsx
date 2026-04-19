@@ -2984,7 +2984,7 @@ export default function ResilienceApp() {
                               AI pattern read
                             </p>
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
-                              Uses your last 60 entries (same model as Analyze when configured).
+                              Like a friend reading your journal back to you — from your last 60 entries (same model as Analyze when set up).
                             </p>
                           </div>
                           <Button
@@ -2999,7 +2999,7 @@ export default function ResilienceApp() {
                           </Button>
                         </div>
                         {diaryInsightsLoading && (
-                          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Reading your journal…</p>
+                          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Taking a pass through what you wrote…</p>
                         )}
                         {diaryInsightsError && (
                           <p className="mt-3 text-sm text-red-600 dark:text-red-400">{diaryInsightsError}</p>
@@ -3019,7 +3019,7 @@ export default function ResilienceApp() {
                             )}
                             {diaryInsights.source === "fallback" && (
                               <p className="text-xs text-amber-800 dark:text-amber-300/90">
-                                Summary mode (no API key). Set ANTHROPIC_API_KEY for full narrative insights.
+                                Quick pass without the full model — add ANTHROPIC_API_KEY for a deeper, friend-style read.
                               </p>
                             )}
                           </div>

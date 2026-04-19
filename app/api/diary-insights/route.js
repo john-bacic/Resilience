@@ -42,17 +42,24 @@ function fallbackFromEntries(entries) {
   const top = ranked[0];
   const parts = [];
   if (top && top[1] > 0) {
+    const label = STEP_LABELS[top[0]];
+    const n = top[1];
     parts.push(
-      `The resilience step that shows up most in your text is "${STEP_LABELS[top[0]]}" (${top[1]} ${top[1] === 1 ? "hit" : "hits"} across entries).`
+      n === 1
+        ? `I keep seeing you circle back to “${label}” in what you wrote — it’s showing up as a real thread for you.`
+        : `You come back to “${label}” a lot in your entries — like ${n} times. That’s not random; it’s something your mind keeps working.`
     );
   }
   if (moodShifts > 0) {
     const avg = (moodShiftSum / moodShifts).toFixed(1);
-    parts.push(`Average mood change where you logged before/after: ${avg >= 0 ? "+" : ""}${avg} on your scale (${moodShifts} ${moodShifts === 1 ? "entry" : "entries"}).`);
+    const sign = Number(avg) >= 0 ? "+" : "";
+    parts.push(
+      `When you’ve logged how you felt before and after, you’re shifting about ${sign}${avg} on average — small but real movement across ${moodShifts} ${moodShifts === 1 ? "time" : "times"} you checked in.`
+    );
   }
   if (parts.length === 0) {
     parts.push(
-      `You have ${entries.length} ${entries.length === 1 ? "entry" : "entries"}. Add patterns by logging moods and using Analyze on the Log flow, or set ANTHROPIC_API_KEY for a full narrative read.`
+      `You’ve got ${entries.length} ${entries.length === 1 ? "entry" : "entries"} here — I don’t have enough hooks yet to mirror much back. Log moods when you can and use Analyze on the Log flow so I can sound more like I actually read you; add ANTHROPIC_API_KEY if you want the richer read.`
     );
   }
 
@@ -60,7 +67,8 @@ function fallbackFromEntries(entries) {
     source: "fallback",
     overview: parts.join(" "),
     patterns: [],
-    caveat: "Set ANTHROPIC_API_KEY for AI-written themes and blind-spot notes from your full journal."
+    caveat:
+      "This is the quick on-device version — add ANTHROPIC_API_KEY if you want me to go deeper and sound even more like someone who sat with every line."
   };
 }
 
@@ -99,12 +107,21 @@ export async function POST(request) {
       body: JSON.stringify({
         model,
         max_tokens: 900,
-        temperature: 0.35,
-        system: `You are a resilience journaling coach. Read the user's diary entries (newest first) and summarize real patterns — recurring stories, triggers, mood trends, what helps — only grounded in the text. Avoid generic therapy platitudes. Return strict JSON only with keys: overview (one short paragraph), patterns (array of 3-6 short bullet strings), caveat (one sentence on what the analysis might miss or limits of the data).`,
+        temperature: 0.5,
+        system: `You are replying as a close friend who just read their private journal — not a therapist, not a lab report. Write in second person (you / your). Sound warm, direct, a little informal; contractions are fine. Talk *to* them about *their* thoughts: mirror what they actually said, name the tensions or wins you see in their own words. Phrases like "sounds like…", "I keep noticing you…", "that must’ve felt…" are good. Never say "the user", "the individual", or write like a case study.
+
+Stay 100% grounded in what’s in the entries — no invented events or emotions. If the data is thin, say so honestly in the caveat in the same friend voice (not corporate).
+
+Return strict JSON only with these keys:
+- overview: one paragraph, 2–5 short sentences, like a text from someone who gets you.
+- patterns: array of 3–6 strings; each line is something a friend might say over coffee — not clinical bullet points, no "Step 1 / Step 2" jargon unless they used that language.
+- caveat: one sentence, warm, about what you might be missing or what’s fuzzy — still human.
+
+Avoid: therapy-speak ("hold space", "validate", "coping strategies"), "it is recommended", "analysis indicates", stiff summaries, numbered observations that sound like a form.`,
         messages: [
           {
             role: "user",
-            content: `Diary entries (JSON, newest first):\n${JSON.stringify(entries)}`
+            content: `Here are their diary entries (newest first). Read them and talk back like you’re their friend, not their clinician:\n${JSON.stringify(entries)}`
           }
         ]
       })
@@ -137,9 +154,14 @@ export async function POST(request) {
 
     return Response.json({
       source: "ai",
-      overview: overview || patterns[0] || "Patterns noted from your journal.",
+      overview:
+        overview ||
+        patterns[0] ||
+        "I read what you logged — there’s more in here than a one-line summary can catch, but I’m glad you’re writing it down.",
       patterns: patterns.slice(0, 8),
-      caveat: caveat || "Patterns are inferred from logged text only."
+      caveat:
+        caveat ||
+        "I only know what made it into these entries — anything you didn’t write down, I’m guessing at."
     });
   } catch (e) {
     console.error("[diary-insights]", e);
