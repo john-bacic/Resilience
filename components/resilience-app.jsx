@@ -358,7 +358,11 @@ function effectiveTriggeredStepIds(entry) {
   return stepIdsFromFlags(detectStepsStrict(entryTextForStepPatterns(entry)));
 }
 
-/** First-sentence / normalized key for clustering similar story text. */
+/**
+ * Buckets `entry.story` text so similar wording counts together: lowercase, collapse
+ * whitespace, take the first sentence fragment (split on . ! ?), cap length.
+ * Not semantic AI — pure string clustering.
+ */
 function storyThemeKey(story) {
   const s = String(story || "")
     .trim()
@@ -1482,10 +1486,17 @@ export default function ResilienceApp() {
     }
   }, []);
 
-  /** Log tab only: show diary block when at least one entry exists for today (calendar date). */
-  const diaryEntriesTodayForLogTab = useMemo(
-    () => diaryEntriesSorted.filter((entry) => diaryEntryDateKey(entry) === todayDateKey),
-    [diaryEntriesSorted, todayDateKey]
+  /** Log tab: entries for the same calendar day as the "When did this happen?" picker (not always today). */
+  const diaryEntriesForSelectedLogDate = useMemo(
+    () => diaryEntriesSorted.filter((entry) => diaryEntryDateKey(entry) === logEntryDateKey),
+    [diaryEntriesSorted, logEntryDateKey]
+  );
+  const logTabDiarySubtitle = useMemo(
+    () =>
+      logEntryDateKey === todayDateKey
+        ? "Today's entries."
+        : `Entries for ${formatDateKeyDisplay(logEntryDateKey)}.`,
+    [logEntryDateKey, todayDateKey]
   );
   const diaryPatternPrompt = useMemo(() => diaryPatternContext(app.diary), [app.diary]);
   const seenScenariosPrompt = useMemo(
@@ -1667,9 +1678,11 @@ export default function ResilienceApp() {
     }
 
     const storyBuckets = new Map();
+    let entriesWithStoryText = 0;
     app.diary.forEach((entry) => {
       const raw = String(entry.story || "").trim();
       if (!raw) return;
+      entriesWithStoryText += 1;
       const key = storyThemeKey(raw);
       if (!key) return;
       const display = raw.length > 90 ? `${raw.slice(0, 87).trim()}…` : raw;
@@ -1677,11 +1690,25 @@ export default function ResilienceApp() {
       if (!prev) storyBuckets.set(key, { count: 1, display });
       else storyBuckets.set(key, { count: prev.count + 1, display: prev.display });
     });
-    const topStoryEntry = [...storyBuckets.entries()].sort((a, b) => b[1].count - a[1].count)[0];
-    const topStory =
-      topStoryEntry && topStoryEntry[1].count > 0
-        ? `${topStoryEntry[1].display} (${topStoryEntry[1].count}×)`
-        : "No dominant story theme yet.";
+    const sortedStoryBuckets = [...storyBuckets.entries()].sort((a, b) => b[1].count - a[1].count);
+    const maxStoryCount = sortedStoryBuckets[0]?.[1]?.count ?? 0;
+    const tiedAtMax =
+      maxStoryCount > 0 ? sortedStoryBuckets.filter(([, v]) => v.count === maxStoryCount) : [];
+
+    let topStory;
+    if (entriesWithStoryText === 0) {
+      topStory = "No story text logged yet.";
+    } else if (maxStoryCount < 2) {
+      topStory =
+        entriesWithStoryText === 1
+          ? "No common story theme — only one entry has a story so far."
+          : "No common story theme — no line repeats across entries yet (first-line clusters are all unique).";
+    } else if (tiedAtMax.length > 1) {
+      topStory = `No single most common theme — ${tiedAtMax.length} clusters tie at ${maxStoryCount}× each.`;
+    } else {
+      const [, bucket] = tiedAtMax[0];
+      topStory = `${bucket.display} (${bucket.count}×)`;
+    }
 
     return {
       total,
@@ -1957,7 +1984,7 @@ export default function ResilienceApp() {
     });
     setEventText("");
     setAnalysis(null);
-    setLogEntryDateKey(todayDateKey);
+    // Keep logEntryDateKey so the Diary list below still matches the day just saved (see diaryEntriesForSelectedLogDate).
     setTab("log");
   }
 
@@ -2872,14 +2899,14 @@ export default function ResilienceApp() {
                   </Card>
                 </div>
 
-                {diaryEntriesTodayForLogTab.length > 0 && (
+                {diaryEntriesForSelectedLogDate.length > 0 && (
                   <Card>
                     <CardHeader>
-                      <SectionTitle icon={BookOpen} title="Diary" subtitle="Today's entries." />
+                      <SectionTitle icon={BookOpen} title="Diary" subtitle={logTabDiarySubtitle} />
                     </CardHeader>
                     <CardContent>
                       <div className="grid gap-4">
-                        {diaryEntriesTodayForLogTab.map((entry) => {
+                        {diaryEntriesForSelectedLogDate.map((entry) => {
                           const entryProgramDay = diaryEntryProgramDayDisplay(programAnchorKey, entry);
                           return (
                             <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
@@ -3055,7 +3082,7 @@ export default function ResilienceApp() {
                       </p>
                       <p
                         className="text-sm text-slate-700 dark:text-slate-300"
-                        title="Grouped by first sentence / similar wording so small edits don’t split counts."
+                        title="Uses only the Story field. Entries are grouped by a normalized first line (see storyThemeKey). A “common” theme is shown only if the same cluster appears at least twice — never invented."
                       >
                         Most common story theme: {diaryStats.topStory}
                       </p>
