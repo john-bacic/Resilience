@@ -1,5 +1,6 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
@@ -9,14 +10,17 @@ import {
   CheckCircle2,
   ChevronRight,
   Copy,
+  Heart,
   Home,
   LineChart,
+  MessageCircle,
   Moon,
   NotebookPen,
   RefreshCw,
   Share2,
   Sun,
   Sparkles,
+  Trash2,
   X
 } from "lucide-react";
 import QRCode from "react-qr-code";
@@ -98,8 +102,11 @@ function normalizeAppState(raw) {
           if (!entry || typeof entry !== "object") {
             return { id: getRandomId(), triggeredSteps: [], title: "", createdAt: new Date().toISOString() };
           }
+          const id =
+            typeof entry.id === "string" && entry.id.trim() ? entry.id : getRandomId();
           return {
             ...entry,
+            id,
             triggeredSteps: Array.isArray(entry.triggeredSteps) ? entry.triggeredSteps : []
           };
         })
@@ -906,6 +913,7 @@ function AiBadgeIcon() {
 }
 
 export default function ResilienceApp() {
+  const { user: clerkUser } = useUser();
   const [app, setApp] = useState(DEFAULT_STATE);
   /** Ref + state: block PUT /api/state until first GET /api/state attempt finishes (avoids racing empty defaults over server diary). */
   const initialStateLoadedRef = useRef(false);
@@ -988,6 +996,7 @@ export default function ResilienceApp() {
   const [sharedDiariesItems, setSharedDiariesItems] = useState([]);
   const [sharedDiariesUnavailable, setSharedDiariesUnavailable] = useState(false);
   const [sharedDiaryModalOpen, setSharedDiaryModalOpen] = useState(false);
+  const [sharedDiaryOwnerId, setSharedDiaryOwnerId] = useState("");
   const [sharedDiaryOwnerLabel, setSharedDiaryOwnerLabel] = useState("");
   const [sharedDiaryEntries, setSharedDiaryEntries] = useState([]);
   const [sharedDiaryLoading, setSharedDiaryLoading] = useState(false);
@@ -996,6 +1005,13 @@ export default function ResilienceApp() {
   const [sharedViewingEntry, setSharedViewingEntry] = useState(null);
   const [sharedViewingDraft, setSharedViewingDraft] = useState(null);
   const [sharedViewingOmitTitleScenario, setSharedViewingOmitTitleScenario] = useState(false);
+  /** @type {Record<string, { likeCount: number; commentCount: number }>} */
+  const [sharedEntryReactionCounts, setSharedEntryReactionCounts] = useState({});
+  const [sharedEntryReactionsDetail, setSharedEntryReactionsDetail] = useState(null);
+  const [sharedReactionsBusy, setSharedReactionsBusy] = useState(false);
+  const [sharedCommentDraft, setSharedCommentDraft] = useState("");
+  const [ownerEntryReactions, setOwnerEntryReactions] = useState(null);
+  const [ownerReactionsLoading, setOwnerReactionsLoading] = useState(false);
   const isAnyModalOpen =
     reflectionOpen ||
     isReminderModalOpen ||
@@ -1765,9 +1781,12 @@ export default function ResilienceApp() {
     setEditingDiaryId(null);
     setDiaryEntryModalViewOnly(false);
     setDiaryEditMoodPicker(null);
+    setOwnerEntryReactions(null);
+    setOwnerReactionsLoading(false);
   }
 
   function openDiaryEditor(entry, viewOnly = false) {
+    if (!sharingSettings) void loadSharingSettings();
     setEditingDiaryId(entry.id);
     setEditingDiaryDraft({
       title: diaryTitleDisplay(entry),
@@ -1838,23 +1857,58 @@ export default function ResilienceApp() {
     setSharedViewingEntry(null);
     setSharedViewingDraft(null);
     setSharedViewingOmitTitleScenario(false);
+    setSharedEntryReactionsDetail(null);
+    setSharedCommentDraft("");
   }
 
   function closeSharedDiaryModal() {
     setSharedDiaryModalOpen(false);
+    setSharedDiaryOwnerId("");
     setSharedDiaryOwnerLabel("");
     setSharedDiaryEntries([]);
     setSharedDiaryLoading(false);
     setSharedDiaryError(null);
+    setSharedEntryReactionCounts({});
     closeSharedEntryViewer();
   }
 
+  async function refreshSharedReactionCounts(ownerId, entries) {
+    if (!ownerId || !Array.isArray(entries) || entries.length === 0) {
+      setSharedEntryReactionCounts({});
+      return;
+    }
+    const next = {};
+    await Promise.all(
+      entries.map(async (e) => {
+        if (!e?.id) return;
+        try {
+          const res = await fetch(
+            `/api/shared-diaries/${encodeURIComponent(ownerId)}/entries/${encodeURIComponent(e.id)}/reactions`,
+            { cache: "no-store" }
+          );
+          if (res.ok) {
+            const d = await res.json();
+            next[e.id] = {
+              likeCount: d.likeCount ?? 0,
+              commentCount: Array.isArray(d.comments) ? d.comments.length : 0
+            };
+          }
+        } catch {
+          /* ignore */
+        }
+      })
+    );
+    setSharedEntryReactionCounts(next);
+  }
+
   async function loadSharedDiaryForOwner(ownerId, label) {
+    setSharedDiaryOwnerId(ownerId);
     setSharedDiaryOwnerLabel(label);
     setSharedDiaryModalOpen(true);
     setSharedDiaryLoading(true);
     setSharedDiaryError(null);
     setSharedDiaryEntries([]);
+    setSharedEntryReactionCounts({});
     closeSharedEntryViewer();
     try {
       const response = await fetch(`/api/shared-diaries/${encodeURIComponent(ownerId)}`, { cache: "no-store" });
@@ -1872,7 +1926,9 @@ export default function ResilienceApp() {
       }
       const data = await response.json();
       const rawDiary = Array.isArray(data?.diary) ? data.diary : [];
-      setSharedDiaryEntries(normalizeAppState({ diary: rawDiary }).diary);
+      const normalized = normalizeAppState({ diary: rawDiary }).diary;
+      setSharedDiaryEntries(normalized);
+      void refreshSharedReactionCounts(ownerId, normalized);
     } catch {
       setSharedDiaryError("Could not load this diary.");
     } finally {
@@ -1880,7 +1936,176 @@ export default function ResilienceApp() {
     }
   }
 
+  useEffect(() => {
+    if (!sharedEntryViewOpen || !sharedDiaryOwnerId) {
+      return undefined;
+    }
+    if (!sharedViewingEntry?.id) {
+      setSharedReactionsBusy(false);
+      setSharedEntryReactionsDetail(null);
+      return undefined;
+    }
+    let cancelled = false;
+    async function load() {
+      setSharedReactionsBusy(true);
+      try {
+        const res = await fetch(
+          `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
+          { cache: "no-store" }
+        );
+        if (!cancelled) {
+          if (res.ok) {
+            setSharedEntryReactionsDetail(await res.json());
+          } else {
+            setSharedEntryReactionsDetail(null);
+          }
+        }
+      } finally {
+        if (!cancelled) setSharedReactionsBusy(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedEntryViewOpen, sharedViewingEntry?.id, sharedDiaryOwnerId]);
+
+  useEffect(() => {
+    if (!isDiaryEditModalOpen || !editingDiaryId) {
+      return undefined;
+    }
+    let cancelled = false;
+    setOwnerReactionsLoading(true);
+    fetch(`/api/me/sharing/reactions?entryId=${encodeURIComponent(editingDiaryId)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setOwnerEntryReactions(data);
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerEntryReactions(null);
+      })
+      .finally(() => {
+        if (!cancelled) setOwnerReactionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDiaryEditModalOpen, editingDiaryId]);
+
+  async function toggleSharedEntryLike() {
+    if (!sharedDiaryOwnerId || !sharedViewingEntry?.id) return;
+    setSharedReactionsBusy(true);
+    try {
+      const res = await fetch(
+        `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "toggleLike" })
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setSharedEntryReactionsDetail(data);
+        setSharedEntryReactionCounts((prev) => ({
+          ...prev,
+          [sharedViewingEntry.id]: {
+            likeCount: data.likeCount ?? 0,
+            commentCount: Array.isArray(data.comments) ? data.comments.length : 0
+          }
+        }));
+      }
+    } finally {
+      setSharedReactionsBusy(false);
+    }
+  }
+
+  async function submitSharedComment() {
+    const text = sharedCommentDraft.trim();
+    if (!sharedDiaryOwnerId || !sharedViewingEntry?.id || !text) return;
+    setSharedReactionsBusy(true);
+    try {
+      const res = await fetch(
+        `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "comment", body: text })
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setSharedEntryReactionsDetail(data);
+        setSharedCommentDraft("");
+        setSharedEntryReactionCounts((prev) => ({
+          ...prev,
+          [sharedViewingEntry.id]: {
+            likeCount: data.likeCount ?? 0,
+            commentCount: Array.isArray(data.comments) ? data.comments.length : 0
+          }
+        }));
+      }
+    } finally {
+      setSharedReactionsBusy(false);
+    }
+  }
+
+  async function deleteSharedComment(commentId) {
+    if (!sharedDiaryOwnerId || !sharedViewingEntry?.id || !commentId) return;
+    setSharedReactionsBusy(true);
+    try {
+      const res = await fetch(
+        `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/comments/${encodeURIComponent(commentId)}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        const detailRes = await fetch(
+          `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
+          { cache: "no-store" }
+        );
+        if (detailRes.ok) {
+          const data = await detailRes.json();
+          setSharedEntryReactionsDetail(data);
+          setSharedEntryReactionCounts((prev) => ({
+            ...prev,
+            [sharedViewingEntry.id]: {
+              likeCount: data.likeCount ?? 0,
+              commentCount: Array.isArray(data.comments) ? data.comments.length : 0
+            }
+          }));
+        }
+      }
+    } finally {
+      setSharedReactionsBusy(false);
+    }
+  }
+
+  async function deleteOwnerComment(commentId) {
+    if (!clerkUser?.id || !editingDiaryId || !commentId) return;
+    setOwnerReactionsLoading(true);
+    try {
+      const res = await fetch(
+        `/api/shared-diaries/${encodeURIComponent(clerkUser.id)}/entries/${encodeURIComponent(editingDiaryId)}/comments/${encodeURIComponent(commentId)}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        const detailRes = await fetch(
+          `/api/me/sharing/reactions?entryId=${encodeURIComponent(editingDiaryId)}`,
+          { cache: "no-store" }
+        );
+        if (detailRes.ok) {
+          setOwnerEntryReactions(await detailRes.json());
+        }
+      }
+    } finally {
+      setOwnerReactionsLoading(false);
+    }
+  }
+
   function openSharedEntryViewer(entry) {
+    setSharedReactionsBusy(true);
+    setSharedEntryReactionsDetail(null);
+    setSharedCommentDraft("");
     setSharedViewingEntry(entry);
     setSharedViewingDraft({
       title: diaryTitleDisplay(entry),
@@ -3107,6 +3332,82 @@ export default function ResilienceApp() {
                   </div>
                 </div>
               )}
+              {(ownerReactionsLoading ||
+                (ownerEntryReactions &&
+                  (sharingSettings?.enabled ||
+                    (ownerEntryReactions.likeCount ?? 0) > 0 ||
+                    (ownerEntryReactions.comments?.length ?? 0) > 0))) && (
+                <section className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-800/60">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    From people you&apos;ve shared with
+                  </p>
+                  {ownerReactionsLoading ? (
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+                  ) : ownerEntryReactions ? (
+                    <div className="mt-2 space-y-3">
+                      {(ownerEntryReactions.likeCount ?? 0) > 0 ? (
+                        <div className="flex flex-wrap items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                          <Heart className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" aria-hidden />
+                          <div>
+                            <span className="font-medium">
+                              {ownerEntryReactions.likeCount} like
+                              {ownerEntryReactions.likeCount === 1 ? "" : "s"}
+                            </span>
+                            {Array.isArray(ownerEntryReactions.likes) && ownerEntryReactions.likes.length > 0 ? (
+                              <p className="mt-0.5 text-slate-600 dark:text-slate-400">
+                                {ownerEntryReactions.likes.map((l) => l.label).join(", ")}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                      {Array.isArray(ownerEntryReactions.comments) && ownerEntryReactions.comments.length > 0 ? (
+                        <ul className="space-y-2">
+                          {ownerEntryReactions.comments.map((c) => (
+                            <li
+                              key={c.id}
+                              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-slate-900 dark:text-slate-100">{c.authorLabel}</p>
+                                  <p className="mt-1 whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+                                    {c.body}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                    {c.createdAt
+                                      ? new Date(c.createdAt).toLocaleString(undefined, {
+                                          dateStyle: "medium",
+                                          timeStyle: "short"
+                                        })
+                                      : ""}
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="shrink-0 px-2 py-1"
+                                  title="Remove comment"
+                                  onClick={() => void deleteOwnerComment(c.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                </Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {sharingSettings?.enabled &&
+                      (ownerEntryReactions.likeCount ?? 0) === 0 &&
+                      (!ownerEntryReactions.comments || ownerEntryReactions.comments.length === 0) ? (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">No likes or comments yet.</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Could not load activity.</p>
+                  )}
+                </section>
+              )}
               <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-600">
                 {diaryEntryModalViewOnly ? (
                   <div className="flex justify-end">
@@ -3350,7 +3651,7 @@ export default function ResilienceApp() {
               <CardTitle className="break-words">
                 {sharedDiaryOwnerLabel ? `${sharedDiaryOwnerLabel}'s diary` : "Shared diary"}
               </CardTitle>
-              <CardDescription>Read-only · diary entries only</CardDescription>
+              <CardDescription>Read-only · you can like and comment on entries</CardDescription>
             </CardHeader>
             <CardContent>
               {sharedDiaryLoading ? (
@@ -3368,8 +3669,9 @@ export default function ResilienceApp() {
                 <div className="grid gap-4">
                   {sharedDiarySorted.map((entry) => {
                     const entryProgramDay = diaryEntryProgramDayDisplay(sharedDiaryAnchorKey, entry);
+                    const rc = entry.id ? sharedEntryReactionCounts[entry.id] : null;
                     return (
-                      <div key={entry.id} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
+                      <div key={entry.id || diaryTitleDisplay(entry)} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
                         <div>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
                             {diarySourceLabel(entry)}
@@ -3389,6 +3691,18 @@ export default function ResilienceApp() {
                                 : ""}
                             {entryProgramDay != null ? ` · Day ${entryProgramDay}` : ""}
                           </p>
+                          {rc ? (
+                            <p className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                              <span className="inline-flex items-center gap-1">
+                                <Heart className="h-3.5 w-3.5 text-rose-500" aria-hidden />
+                                {rc.likeCount}
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                                {rc.commentCount}
+                              </span>
+                            </p>
+                          ) : null}
                         </div>
                         {entry.scenario && entry.source !== "reflection" ? (
                           <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
@@ -3422,7 +3736,7 @@ export default function ResilienceApp() {
                   <span className="text-sm font-normal text-slate-500 dark:text-slate-400">{sharedViewingDateLabel}</span>
                 ) : null}
               </CardTitle>
-              <CardDescription>Read-only</CardDescription>
+              <CardDescription>Read-only · like and comment below</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <DiaryEntryModalFields
@@ -3442,6 +3756,90 @@ export default function ResilienceApp() {
                   </p>
                 </section>
               ) : null}
+              <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-800/60">
+                <p className={diaryModalFieldLabelClass}>Reactions</p>
+                {sharedReactionsBusy && !sharedEntryReactionsDetail ? (
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+                ) : null}
+                {sharedEntryReactionsDetail ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-1.5 px-3 py-1.5 text-sm"
+                        disabled={sharedReactionsBusy}
+                        onClick={() => void toggleSharedEntryLike()}
+                        aria-pressed={sharedEntryReactionsDetail.likedByMe}
+                      >
+                        <Heart
+                          className={`h-4 w-4 ${sharedEntryReactionsDetail.likedByMe ? "fill-rose-500 text-rose-500" : ""}`}
+                          aria-hidden
+                        />
+                        {sharedEntryReactionsDetail.likeCount ?? 0}
+                      </Button>
+                    </div>
+                    {Array.isArray(sharedEntryReactionsDetail.comments) && sharedEntryReactionsDetail.comments.length > 0 ? (
+                      <ul className="space-y-2">
+                        {sharedEntryReactionsDetail.comments.map((c) => (
+                          <li
+                            key={c.id}
+                            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-slate-900 dark:text-slate-100">{c.authorLabel}</p>
+                                <p className="mt-1 whitespace-pre-wrap text-slate-700 dark:text-slate-300">{c.body}</p>
+                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                  {c.createdAt
+                                    ? new Date(c.createdAt).toLocaleString(undefined, {
+                                        dateStyle: "medium",
+                                        timeStyle: "short"
+                                      })
+                                    : ""}
+                                </p>
+                              </div>
+                              {clerkUser?.id && c.authorUserId === clerkUser.id ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="shrink-0 px-2 py-1 text-xs"
+                                  title="Delete your comment"
+                                  disabled={sharedReactionsBusy}
+                                  onClick={() => void deleteSharedComment(c.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                </Button>
+                              ) : null}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-slate-500 dark:text-slate-400">No comments yet.</p>
+                    )}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <textarea
+                        value={sharedCommentDraft}
+                        onChange={(e) => setSharedCommentDraft(e.target.value)}
+                        placeholder="Add a comment…"
+                        rows={2}
+                        maxLength={2000}
+                        className="min-h-[72px] w-full flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                      <Button
+                        type="button"
+                        disabled={sharedReactionsBusy || !sharedCommentDraft.trim()}
+                        onClick={() => void submitSharedComment()}
+                      >
+                        Post
+                      </Button>
+                    </div>
+                  </div>
+                ) : !sharedReactionsBusy ? (
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Could not load reactions.</p>
+                ) : null}
+              </div>
               <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-600">
                 <div className="flex justify-end">
                   <Button variant="outline" type="button" onClick={closeSharedEntryViewer}>
