@@ -1,13 +1,14 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Bell,
   Brain,
   Calendar,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Copy,
   Heart,
@@ -718,7 +719,9 @@ function DiaryEntryModalFields({ viewOnly, draft, onFieldChange, omitTitleAndSce
           return (
             <section key={key}>
               <p className={diaryModalFieldLabelClass}>{label}</p>
-              <p className="mt-1.5 whitespace-pre-wrap text-base leading-relaxed text-slate-900 dark:text-slate-100">
+              <p
+                className={`mt-1.5 whitespace-pre-wrap text-base leading-relaxed text-slate-900 dark:text-slate-100 ${key === "lesson" ? "font-semibold" : ""}`}
+              >
                 {text || emptyPlaceholder}
               </p>
             </section>
@@ -740,7 +743,7 @@ function DiaryEntryModalFields({ viewOnly, draft, onFieldChange, omitTitleAndSce
             value={draft[key] ?? ""}
             onChange={(e) => onFieldChange(key, e.target.value)}
             placeholder={`${label}…`}
-            className="mt-1.5"
+            className={`mt-1.5${key === "lesson" ? " font-semibold" : ""}`}
           />
         </section>
       ))}
@@ -891,15 +894,37 @@ function FocusSettingsIcon({ className = "" }) {
   );
 }
 
+/** Footer row: optional “shared activity” on the left, Edit/Delete as children on the right. */
+function DiaryEntrySharedActivityFooter({ entryId, reactionsSummary, children }) {
+  const s = entryId ? reactionsSummary[entryId] : undefined;
+  const has =
+    s && ((s.likeCount ?? 0) > 0 || (s.commentCount ?? 0) > 0);
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4 dark:border-slate-600">
+      <div className="flex min-w-0 flex-1 items-center">
+        {has ? (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-800 dark:text-emerald-300"
+            title="Someone you shared your diary with liked or commented on this entry"
+          >
+            <Heart className="h-3.5 w-3.5 shrink-0 text-rose-500" aria-hidden />
+            <MessageCircle className="h-3.5 w-3.5 shrink-0 text-slate-600 dark:text-slate-400" aria-hidden />
+            <span>Shared activity</span>
+          </span>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 gap-2">{children}</div>
+    </div>
+  );
+}
+
 function AiBadgeIcon() {
   return (
     <svg
-      width="22"
-      height="21"
       viewBox="0 0 26 25"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="text-slate-900 opacity-50 dark:text-white"
+      className="h-7 w-7 shrink-0 text-white dark:text-slate-900"
       aria-hidden="true"
     >
       <path
@@ -1012,6 +1037,9 @@ export default function ResilienceApp() {
   const [sharedCommentDraft, setSharedCommentDraft] = useState("");
   const [ownerEntryReactions, setOwnerEntryReactions] = useState(null);
   const [ownerReactionsLoading, setOwnerReactionsLoading] = useState(false);
+  /** entryId → counts from GET /api/me/sharing/reactions (summary) for diary list indicators */
+  const [diaryEntryReactionsSummary, setDiaryEntryReactionsSummary] = useState({});
+  const diaryEditModalWasOpenRef = useRef(false);
   const isAnyModalOpen =
     reflectionOpen ||
     isReminderModalOpen ||
@@ -1377,6 +1405,38 @@ export default function ResilienceApp() {
     () => sortDiaryEntriesByCalendarNewestFirst(app.diary),
     [app.diary]
   );
+
+  const diaryEntryIdsKey = useMemo(
+    () =>
+      app.diary
+        .map((e) => (e && e.id ? String(e.id) : ""))
+        .filter(Boolean)
+        .sort()
+        .join("|"),
+    [app.diary]
+  );
+
+  const loadDiaryEntryReactionsSummary = useCallback(async () => {
+    try {
+      const res = await fetch("/api/me/sharing/reactions", { cache: "no-store" });
+      if (res.status === 503) {
+        setDiaryEntryReactionsSummary({});
+        return;
+      }
+      if (!res.ok) return;
+      const data = await res.json();
+      const map = {};
+      for (const row of data.entries || []) {
+        map[row.entryId] = {
+          likeCount: row.likeCount ?? 0,
+          commentCount: row.commentCount ?? 0
+        };
+      }
+      setDiaryEntryReactionsSummary(map);
+    } catch {
+      setDiaryEntryReactionsSummary({});
+    }
+  }, []);
 
   /** Log tab only: show diary block when at least one entry exists for today (calendar date). */
   const diaryEntriesTodayForLogTab = useMemo(
@@ -1992,6 +2052,21 @@ export default function ResilienceApp() {
     };
   }, [isDiaryEditModalOpen, editingDiaryId]);
 
+  useEffect(() => {
+    if (tab !== "log" && tab !== "progress") {
+      setDiaryEntryReactionsSummary({});
+      return undefined;
+    }
+    void loadDiaryEntryReactionsSummary();
+  }, [tab, diaryEntryIdsKey, loadDiaryEntryReactionsSummary]);
+
+  useEffect(() => {
+    if (diaryEditModalWasOpenRef.current && !isDiaryEditModalOpen && (tab === "log" || tab === "progress")) {
+      void loadDiaryEntryReactionsSummary();
+    }
+    diaryEditModalWasOpenRef.current = isDiaryEditModalOpen;
+  }, [isDiaryEditModalOpen, tab, loadDiaryEntryReactionsSummary]);
+
   async function toggleSharedEntryLike() {
     if (!sharedDiaryOwnerId || !sharedViewingEntry?.id) return;
     setSharedReactionsBusy(true);
@@ -2096,6 +2171,7 @@ export default function ResilienceApp() {
         if (detailRes.ok) {
           setOwnerEntryReactions(await detailRes.json());
         }
+        void loadDiaryEntryReactionsSummary();
       }
     } finally {
       setOwnerReactionsLoading(false);
@@ -2710,15 +2786,18 @@ export default function ResilienceApp() {
                                   Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
                                 </p>
                               )}
-                              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
-                              <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
+                              <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">{entry.lesson || "No lesson logged."}</p>
+                              <DiaryEntrySharedActivityFooter
+                                entryId={entry.id}
+                                reactionsSummary={diaryEntryReactionsSummary}
+                              >
                                 <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
                                   Edit
                                 </Button>
                                 <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
                                   Delete
                                 </Button>
-                              </div>
+                              </DiaryEntrySharedActivityFooter>
                             </div>
                           );
                         })}
@@ -2898,15 +2977,18 @@ export default function ResilienceApp() {
                                 Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
                               </p>
                             )}
-                            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
-                            <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
+                            <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">{entry.lesson || "No lesson logged."}</p>
+                            <DiaryEntrySharedActivityFooter
+                              entryId={entry.id}
+                              reactionsSummary={diaryEntryReactionsSummary}
+                            >
                               <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
                                 Edit
                               </Button>
                               <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
                                 Delete
                               </Button>
-                            </div>
+                            </DiaryEntrySharedActivityFooter>
                           </div>
                           );
                         })}
@@ -3019,22 +3101,23 @@ export default function ResilienceApp() {
           <label htmlFor="shared-diary-select" className="sr-only">
             View someone else&apos;s diary
           </label>
-          <select
-            id="shared-diary-select"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
-            defaultValue=""
-            disabled={sharedDiariesUnavailable || sharedDiariesItems.length === 0}
-            onChange={(e) => {
-              const v = e.target.value;
-              const el = e.target;
-              if (!v) return;
-              const item = sharedDiariesItems.find((i) => i.ownerId === v);
-              void loadSharedDiaryForOwner(v, item?.label || v);
-              requestAnimationFrame(() => {
-                el.value = "";
-              });
-            }}
-          >
+          <div className="relative">
+            <select
+              id="shared-diary-select"
+              className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-3 pr-11 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+              defaultValue=""
+              disabled={sharedDiariesUnavailable || sharedDiariesItems.length === 0}
+              onChange={(e) => {
+                const v = e.target.value;
+                const el = e.target;
+                if (!v) return;
+                const item = sharedDiariesItems.find((i) => i.ownerId === v);
+                void loadSharedDiaryForOwner(v, item?.label || v);
+                requestAnimationFrame(() => {
+                  el.value = "";
+                });
+              }}
+            >
             <option value="">
               {sharedDiariesUnavailable
                 ? "Sharing needs a database"
@@ -3047,7 +3130,12 @@ export default function ResilienceApp() {
                 {item.label}
               </option>
             ))}
-          </select>
+            </select>
+            <ChevronDown
+              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+              aria-hidden
+            />
+          </div>
         </div>
       </div>
 
@@ -3714,7 +3802,7 @@ export default function ResilienceApp() {
                             Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
                           </p>
                         ) : null}
-                        <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
+                        <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">{entry.lesson || "No lesson logged."}</p>
                       </div>
                     );
                   })}

@@ -866,7 +866,8 @@ export default function ResilienceMVPApp() {
 
                           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
                             <p className="text-sm text-slate-600">
-                              <span className="font-medium text-slate-900">Lesson:</span> {entry.lesson || "—"}
+                              <span className="font-medium text-slate-900">Lesson:</span>{" "}
+                              <span className="font-semibold text-slate-900">{entry.lesson || "—"}</span>
                             </p>
                             <p className="text-sm text-slate-500">
                               Mood: {entry.moodBefore} → {entry.moodAfter}
