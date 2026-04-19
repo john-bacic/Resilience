@@ -1022,6 +1022,10 @@ export default function ResilienceApp() {
   const [grantAdvancedUserIdInput, setGrantAdvancedUserIdInput] = useState("");
   const [shareDisplayNameDraft, setShareDisplayNameDraft] = useState("");
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  /** @type {{ userId: string, email: string, label: string }[]} */
+  const [sharingRegisteredUsers, setSharingRegisteredUsers] = useState([]);
+  const [sharingRegisteredUsersLoading, setSharingRegisteredUsersLoading] = useState(false);
+  const [sharingRegisteredUsersError, setSharingRegisteredUsersError] = useState(null);
   const [sharedDiariesItems, setSharedDiariesItems] = useState([]);
   const [sharedDiariesUnavailable, setSharedDiariesUnavailable] = useState(false);
   const [sharedDiaryModalOpen, setSharedDiaryModalOpen] = useState(false);
@@ -1103,6 +1107,49 @@ export default function ResilienceApp() {
       typeof sharingSettings.shareDisplayName === "string" ? sharingSettings.shareDisplayName : ""
     );
   }, [sharingSettings]);
+
+  const sharingGrantPickerRows = useMemo(() => {
+    const granted = new Set((sharingSettings?.grants ?? []).map((g) => g.userId));
+    return sharingRegisteredUsers.filter((u) => !granted.has(u.userId));
+  }, [sharingRegisteredUsers, sharingSettings?.grants]);
+
+  useEffect(() => {
+    if (!isShareModalOpen) return;
+    let cancelled = false;
+    setSharingRegisteredUsersLoading(true);
+    setSharingRegisteredUsersError(null);
+    void (async () => {
+      try {
+        const res = await fetch("/api/me/sharing/registered-users", { cache: "no-store" });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          if (!cancelled) {
+            setSharingRegisteredUsers([]);
+            setSharingRegisteredUsersError(
+              typeof err?.error === "string" ? err.error : "Could not load registered users."
+            );
+          }
+          return;
+        }
+        const data = await res.json();
+        const list = Array.isArray(data?.users) ? data.users : [];
+        if (!cancelled) {
+          setSharingRegisteredUsers(list);
+          setSharingRegisteredUsersError(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setSharingRegisteredUsers([]);
+          setSharingRegisteredUsersError("Could not load registered users.");
+        }
+      } finally {
+        if (!cancelled) setSharingRegisteredUsersLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isShareModalOpen]);
 
   useEffect(() => {
     if (unshakenVideoOpen) return;
@@ -3829,18 +3876,66 @@ export default function ResilienceApp() {
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Grant access by email</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      They must already have signed up to this app with that email. There is no public directory of
-                      users—only exact lookup.
+                      Choose from registered accounts below or type an exact email. They must already use this app with
+                      that email.
                     </p>
+                    {sharingRegisteredUsersLoading ? (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Loading registered accounts…</p>
+                    ) : sharingRegisteredUsersError ? (
+                      <p className="rounded-xl bg-rose-50 px-2 py-1.5 text-xs text-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
+                        {sharingRegisteredUsersError}
+                      </p>
+                    ) : sharingGrantPickerRows.length > 0 ? (
+                      <ul className="max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 dark:border-slate-600 dark:bg-slate-900/80">
+                        {sharingGrantPickerRows.map((u) => (
+                          <li
+                            key={u.userId}
+                            className="flex items-center justify-between gap-2 rounded-xl px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{u.label}</p>
+                              <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">{u.email}</p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="shrink-0 px-2 py-1 text-xs"
+                              disabled={sharingBusy}
+                              onClick={() => void applySharingPatch({ grantUserId: u.userId })}
+                            >
+                              Add
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : sharingRegisteredUsers.length > 0 ? (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Everyone in the directory is already on your list—revoke someone to add them again from here, or
+                        use the email field.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        No other registered accounts with an email were returned (small deployments only; capped for
+                        performance).
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <input
                         type="email"
                         autoComplete="email"
+                        list="grant-email-suggestions"
                         value={grantEmailInput}
                         onChange={(e) => setGrantEmailInput(e.target.value)}
                         placeholder="friend@example.com"
                         className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
                       />
+                      <datalist id="grant-email-suggestions">
+                        {sharingGrantPickerRows.map((u) => (
+                          <option key={u.userId} value={u.email}>
+                            {u.label}
+                          </option>
+                        ))}
+                      </datalist>
                       <Button
                         type="button"
                         disabled={
