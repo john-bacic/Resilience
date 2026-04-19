@@ -14,7 +14,8 @@ import {
   NotebookPen,
   RefreshCw,
   Sun,
-  Sparkles
+  Sparkles,
+  X
 } from "lucide-react";
 
 const SCENARIOS = [
@@ -479,6 +480,32 @@ function formatMoodPair(before, after) {
   return `${formatMoodValue(before)} → ${formatMoodValue(after)}`;
 }
 
+function moodEmojiForStored(stored) {
+  if (stored == null || stored === "") return "";
+  const id = normalizeMoodId(stored);
+  const opt = MOOD_OPTIONS.find((m) => m.id === id);
+  return opt ? opt.emoji : "";
+}
+
+function moodLabelForStored(stored) {
+  if (stored == null || stored === "") return "";
+  const id = normalizeMoodId(stored);
+  const opt = MOOD_OPTIONS.find((m) => m.id === id);
+  return opt ? opt.label : "";
+}
+
+/** e.g. `Reflective 🤔` — label then emoji, space between. */
+function formatMoodLabelEmojiChunk(stored) {
+  const label = moodLabelForStored(stored);
+  const emoji = moodEmojiForStored(stored);
+  if (!label && !emoji) return "—";
+  return [label, emoji].filter(Boolean).join(" ");
+}
+
+function formatMoodLabelEmojiPairLine(before, after) {
+  return `${formatMoodLabelEmojiChunk(before)} → ${formatMoodLabelEmojiChunk(after)}`;
+}
+
 /** Map a 1–12 ordinal (can be fractional) to the nearest MOOD_OPTIONS entry. */
 function moodOptionFromOrdinal(ordinal) {
   if (ordinal == null || Number.isNaN(ordinal)) return null;
@@ -618,6 +645,73 @@ function Button({ className = "", variant = "default", type = "button", children
     </button>
   );
 }
+
+function ModalCloseButton({ onClick, label = "Close" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute right-3 top-3 z-10 rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-slate-500"
+      aria-label={label}
+    >
+      <X className="h-5 w-5" strokeWidth={2} />
+    </button>
+  );
+}
+
+const DIARY_MODAL_FIELDS = [
+  { key: "title", label: "Title" },
+  { key: "scenario", label: "Scenario" },
+  { key: "fact", label: "Fact" },
+  { key: "story", label: "Story" },
+  { key: "chosenResponse", label: "Chosen response" },
+  { key: "lesson", label: "Lesson" }
+];
+
+const diaryModalFieldLabelClass =
+  "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400";
+
+/** View: plain text only. Edit: standard boxed fields. */
+function DiaryEntryModalFields({ viewOnly, draft, onFieldChange }) {
+  if (viewOnly) {
+    return (
+      <div className="space-y-5">
+        {DIARY_MODAL_FIELDS.map(({ key, label }) => {
+          const raw = draft[key];
+          const text = raw != null && String(raw).trim() ? String(raw) : "";
+          return (
+            <section key={key}>
+              <p className={diaryModalFieldLabelClass}>{label}</p>
+              <p className="mt-1.5 whitespace-pre-wrap text-base leading-relaxed text-slate-900 dark:text-slate-100">
+                {text || "—"}
+              </p>
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {DIARY_MODAL_FIELDS.map(({ key, label }) => (
+        <section key={key} className="min-w-0">
+          <label className={`block ${diaryModalFieldLabelClass}`} htmlFor={`diary-modal-${key}`}>
+            {label}
+          </label>
+          <Textarea
+            id={`diary-modal-${key}`}
+            value={draft[key] ?? ""}
+            onChange={(e) => onFieldChange(key, e.target.value)}
+            placeholder={`${label}…`}
+            className="mt-1.5"
+          />
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function Input({ className = "", onFocus, onBlur, onChange, value, ...props }) {
   return (
     <div className="min-w-0 max-w-full">
@@ -799,10 +893,14 @@ export default function ResilienceApp() {
   const [isMoodModalOpen, setIsMoodModalOpen] = useState(false);
   /** "before" | "after" when picking mood for log / diary save flow */
   const [logMoodPicker, setLogMoodPicker] = useState(null);
+  /** Same for Review diary entry modal (separate from log so flows do not clash). */
+  const [diaryEditMoodPicker, setDiaryEditMoodPicker] = useState(null);
   const [reminderDraft, setReminderDraft] = useState("08:00");
   const [isPrefillingReflection, setIsPrefillingReflection] = useState(false);
   const [selectedProgressDate, setSelectedProgressDate] = useState(null);
   const [isDiaryEditModalOpen, setIsDiaryEditModalOpen] = useState(false);
+  /** Title tap opens read-only; Review opens full edit. */
+  const [diaryEntryModalViewOnly, setDiaryEntryModalViewOnly] = useState(false);
   const [editingDiaryId, setEditingDiaryId] = useState(null);
   const [editingDiaryDraft, setEditingDiaryDraft] = useState({
     title: "",
@@ -810,7 +908,9 @@ export default function ResilienceApp() {
     fact: "",
     story: "",
     chosenResponse: "",
-    lesson: ""
+    lesson: "",
+    moodBefore: "reflective",
+    moodAfter: "centered"
   });
   const [lastDeletedDiaryEntry, setLastDeletedDiaryEntry] = useState(null);
   const deleteUndoTimerRef = useRef(null);
@@ -853,7 +953,8 @@ export default function ResilienceApp() {
     isReminderModalOpen ||
     isMoodModalOpen ||
     isDiaryEditModalOpen ||
-    Boolean(logMoodPicker);
+    Boolean(logMoodPicker) ||
+    Boolean(diaryEditMoodPicker);
 
   useEffect(() => {
     if (typeof document === "undefined" || !isAnyModalOpen) return undefined;
@@ -1200,6 +1301,25 @@ export default function ResilienceApp() {
     });
   }, [diaryEntriesSorted, selectedProgressDate]);
 
+  const editingDiaryEntryDateLabel = useMemo(() => {
+    if (!editingDiaryId || !isDiaryEditModalOpen) return null;
+    const entry = app.diary.find((e) => e.id === editingDiaryId);
+    if (!entry) return null;
+    if (entry.loggedDateKey) return formatDateKeyDisplay(entry.loggedDateKey);
+    if (entry.createdAt) return new Date(entry.createdAt).toLocaleDateString();
+    return null;
+  }, [editingDiaryId, isDiaryEditModalOpen, app.diary]);
+
+  const editingDiaryEntryMoodPair = useMemo(() => {
+    if (!editingDiaryId || !isDiaryEditModalOpen) return null;
+    const entry = app.diary.find((e) => e.id === editingDiaryId);
+    if (!entry) return null;
+    if (entry.moodBefore != null && entry.moodAfter != null) {
+      return { before: entry.moodBefore, after: entry.moodAfter };
+    }
+    return null;
+  }, [editingDiaryId, isDiaryEditModalOpen, app.diary]);
+
   async function loadDailyScenario(profileOverride) {
     try {
       setIsRefreshingScenario(true);
@@ -1526,7 +1646,14 @@ export default function ResilienceApp() {
     setTab("log");
   }
 
-  function openDiaryEditor(entry) {
+  function closeDiaryEntryModal() {
+    setIsDiaryEditModalOpen(false);
+    setEditingDiaryId(null);
+    setDiaryEntryModalViewOnly(false);
+    setDiaryEditMoodPicker(null);
+  }
+
+  function openDiaryEditor(entry, viewOnly = false) {
     setEditingDiaryId(entry.id);
     setEditingDiaryDraft({
       title: diaryTitleDisplay(entry),
@@ -1534,8 +1661,12 @@ export default function ResilienceApp() {
       fact: entry.fact || "",
       story: entry.story || "",
       chosenResponse: entry.chosenResponse || "",
-      lesson: entry.lesson || ""
+      lesson: entry.lesson || "",
+      moodBefore: entry.moodBefore != null ? normalizeMoodId(entry.moodBefore) : "reflective",
+      moodAfter: entry.moodAfter != null ? normalizeMoodId(entry.moodAfter) : "centered"
     });
+    setDiaryEntryModalViewOnly(viewOnly);
+    setDiaryEditMoodPicker(null);
     setIsDiaryEditModalOpen(true);
   }
 
@@ -1553,13 +1684,14 @@ export default function ResilienceApp() {
               story: editingDiaryDraft.story,
               chosenResponse: editingDiaryDraft.chosenResponse,
               lesson: editingDiaryDraft.lesson,
+              moodBefore: normalizeMoodId(editingDiaryDraft.moodBefore),
+              moodAfter: normalizeMoodId(editingDiaryDraft.moodAfter),
               ...(entry.source === "log" ? { rawText: editingDiaryDraft.title } : {})
             }
           : entry
       )
     }));
-    setIsDiaryEditModalOpen(false);
-    setEditingDiaryId(null);
+    closeDiaryEntryModal();
   }
 
   function deleteDiaryEntry(entryId) {
@@ -1594,8 +1726,7 @@ export default function ResilienceApp() {
       };
     });
     if (editingDiaryId === entryId) {
-      setIsDiaryEditModalOpen(false);
-      setEditingDiaryId(null);
+      closeDiaryEntryModal();
     }
   }
 
@@ -2095,9 +2226,13 @@ export default function ResilienceApp() {
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
                                   {diarySourceLabel(entry)}
                                 </p>
-                                <h3 className="mt-1 whitespace-pre-wrap break-words text-lg font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => openDiaryEditor(entry, true)}
+                                  className="mt-1 w-full whitespace-pre-wrap break-words text-left text-lg font-semibold leading-snug text-slate-900 transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:text-slate-100 dark:hover:text-slate-200 dark:focus-visible:ring-slate-500"
+                                >
                                   {diaryTitleDisplay(entry)}
-                                </h3>
+                                </button>
                                 <p className="text-sm text-slate-500 dark:text-slate-400">
                                   {entry.loggedDateKey
                                     ? formatDateKeyDisplay(entry.loggedDateKey)
@@ -2118,7 +2253,7 @@ export default function ResilienceApp() {
                               <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
                               <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
                                 <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
-                                  Review
+                                  Edit
                                 </Button>
                                 <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
                                   Delete
@@ -2261,9 +2396,13 @@ export default function ResilienceApp() {
                               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
                                 {diarySourceLabel(entry)}
                               </p>
-                              <h3 className="mt-1 whitespace-pre-wrap break-words text-lg font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => openDiaryEditor(entry, true)}
+                                className="mt-1 w-full whitespace-pre-wrap break-words text-left text-lg font-semibold leading-snug text-slate-900 transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:text-slate-100 dark:hover:text-slate-200 dark:focus-visible:ring-slate-500"
+                              >
                                 {diaryTitleDisplay(entry)}
-                              </h3>
+                              </button>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
                                 {entry.loggedDateKey
                                   ? formatDateKeyDisplay(entry.loggedDateKey)
@@ -2284,7 +2423,7 @@ export default function ResilienceApp() {
                             <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{entry.lesson || "No lesson logged."}</p>
                             <div className="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-600">
                               <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => openDiaryEditor(entry)}>
-                                Review
+                                Edit
                               </Button>
                               <Button variant="outline" className="px-3 py-1 text-xs" onClick={() => deleteDiaryEntry(entry.id)}>
                                 Delete
@@ -2306,7 +2445,8 @@ export default function ResilienceApp() {
       {reflectionOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <Card className="max-h-[92vh] w-full max-w-3xl overflow-auto">
-            <CardHeader>
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={() => setReflectionOpen(false)} />
               <SectionTitle icon={Brain} title="Morning reflection" subtitle="Practice before the moment happens." />
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2453,7 +2593,8 @@ export default function ResilienceApp() {
       {isReminderModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <Card className="w-full max-w-sm">
-            <CardHeader>
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={() => setIsReminderModalOpen(false)} />
               <CardTitle>Edit reminder time</CardTitle>
               <CardDescription>Choose when you want to be reminded daily.</CardDescription>
             </CardHeader>
@@ -2484,7 +2625,8 @@ export default function ResilienceApp() {
             className="max-h-[90vh] w-full max-w-md overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <CardHeader>
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={() => setLogMoodPicker(null)} />
               <CardTitle>Choose current mood</CardTitle>
               <CardDescription>
                 {logMoodPicker === "before"
@@ -2514,10 +2656,56 @@ export default function ResilienceApp() {
         </div>
       )}
 
+      {diaryEditMoodPicker && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4"
+          onClick={() => setDiaryEditMoodPicker(null)}
+          role="presentation"
+        >
+          <Card
+            className="max-h-[90vh] w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={() => setDiaryEditMoodPicker(null)} />
+              <CardTitle>Choose current mood</CardTitle>
+              <CardDescription>
+                {diaryEditMoodPicker === "before"
+                  ? "Before — how you felt when it happened. This tunes your state label for this entry."
+                  : "After — how you feel after working through this."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <MoodOptionList
+                value={
+                  diaryEditMoodPicker === "before"
+                    ? editingDiaryDraft.moodBefore
+                    : editingDiaryDraft.moodAfter
+                }
+                onSelect={(id) => {
+                  setEditingDiaryDraft((prev) =>
+                    diaryEditMoodPicker === "before"
+                      ? { ...prev, moodBefore: id }
+                      : { ...prev, moodAfter: id }
+                  );
+                  setDiaryEditMoodPicker(null);
+                }}
+              />
+              <div className="flex justify-end pt-2">
+                <Button variant="outline" onClick={() => setDiaryEditMoodPicker(null)}>
+                  Close
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {isMoodModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <Card className="w-full max-w-sm">
-            <CardHeader>
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={() => setIsMoodModalOpen(false)} />
               <CardTitle>Choose current mood</CardTitle>
               <CardDescription>This tunes your state label for today.</CardDescription>
             </CardHeader>
@@ -2553,56 +2741,91 @@ export default function ResilienceApp() {
       {isDiaryEditModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <Card className="max-h-[92vh] w-full max-w-2xl overflow-auto">
-            <CardHeader>
-              <CardTitle>Review diary entry</CardTitle>
-              <CardDescription>Update or remove this entry.</CardDescription>
+            <CardHeader className="relative pr-14">
+              <ModalCloseButton onClick={closeDiaryEntryModal} />
+              <CardTitle className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span>{diaryEntryModalViewOnly ? "Diary entry" : "Edit diary entry"}</span>
+                {editingDiaryEntryDateLabel ? (
+                  <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                    {editingDiaryEntryDateLabel}
+                  </span>
+                ) : null}
+              </CardTitle>
+              {!diaryEntryModalViewOnly && (
+                <CardDescription>Update or remove this entry.</CardDescription>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
-              <Textarea
-                value={editingDiaryDraft.title}
-                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, title: e.target.value }))}
-                placeholder="Title"
+              <DiaryEntryModalFields
+                viewOnly={diaryEntryModalViewOnly}
+                draft={editingDiaryDraft}
+                onFieldChange={(key, value) =>
+                  setEditingDiaryDraft((prev) => ({ ...prev, [key]: value }))
+                }
               />
-              <Textarea
-                value={editingDiaryDraft.scenario}
-                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, scenario: e.target.value }))}
-                placeholder="Scenario"
-              />
-              <Textarea
-                value={editingDiaryDraft.fact}
-                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, fact: e.target.value }))}
-                placeholder="Fact"
-              />
-              <Textarea
-                value={editingDiaryDraft.story}
-                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, story: e.target.value }))}
-                placeholder="Story"
-              />
-              <Textarea
-                value={editingDiaryDraft.chosenResponse}
-                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, chosenResponse: e.target.value }))}
-                placeholder="Chosen response"
-              />
-              <Textarea
-                value={editingDiaryDraft.lesson}
-                onChange={(e) => setEditingDiaryDraft((prev) => ({ ...prev, lesson: e.target.value }))}
-                placeholder="Lesson"
-              />
-              <div className="flex justify-between pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (editingDiaryId) deleteDiaryEntry(editingDiaryId);
-                  }}
+              {diaryEntryModalViewOnly && editingDiaryEntryMoodPair != null && (
+                <section
+                  className="mt-4"
+                  aria-label={formatMoodPair(editingDiaryEntryMoodPair.before, editingDiaryEntryMoodPair.after)}
                 >
-                  Delete entry
-                </Button>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setIsDiaryEditModalOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={saveDiaryEdit}>Save changes</Button>
+                  <p className={diaryModalFieldLabelClass}>Mood</p>
+                  <p className="mt-1.5 text-left text-base font-medium leading-snug text-slate-800 dark:text-slate-200">
+                    {formatMoodLabelEmojiPairLine(
+                      editingDiaryEntryMoodPair.before,
+                      editingDiaryEntryMoodPair.after
+                    )}
+                  </p>
+                </section>
+              )}
+              {!diaryEntryModalViewOnly && (
+                <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-800/60">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mood</p>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    Tap Before or After, then choose in the modal.
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setDiaryEditMoodPicker("before")}
+                      className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Before
+                      </span>
+                      <span className="mt-1 block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {formatMoodValue(editingDiaryDraft.moodBefore)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiaryEditMoodPicker("after")}
+                      className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        After
+                      </span>
+                      <span className="mt-1 block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {formatMoodValue(editingDiaryDraft.moodAfter)}
+                      </span>
+                    </button>
+                  </div>
                 </div>
+              )}
+              <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-600">
+                {diaryEntryModalViewOnly ? (
+                  <div className="flex justify-end">
+                    <Button variant="outline" onClick={closeDiaryEntryModal}>
+                      Close
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={closeDiaryEntryModal}>
+                      Cancel
+                    </Button>
+                    <Button onClick={saveDiaryEdit}>Save changes</Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -2610,10 +2833,14 @@ export default function ResilienceApp() {
       )}
 
       {lastDeletedDiaryEntry && (
-        <div className="fixed bottom-4 left-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed bottom-4 left-1/2 z-[60] w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl border-2 border-[#f472b6] bg-[#fbcfe8] px-4 py-3 shadow-lg dark:border-[#be123c] dark:bg-[#881337]">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-slate-700 dark:text-slate-200">Diary entry deleted.</p>
-            <Button variant="outline" className="px-3 py-1 text-xs" onClick={undoDeleteDiaryEntry}>
+            <p className="text-sm text-rose-950 dark:text-rose-50">Diary entry deleted.</p>
+            <Button
+              variant="outline"
+              className="!border-red-600 !bg-white px-3 py-1 text-xs font-medium !text-red-700 hover:!bg-red-50 dark:!border-red-400 dark:!bg-red-950 dark:!text-red-100 dark:hover:!bg-red-900"
+              onClick={undoDeleteDiaryEntry}
+            >
               Undo
             </Button>
           </div>
