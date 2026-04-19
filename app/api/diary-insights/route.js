@@ -1,3 +1,4 @@
+import { jsonrepair } from "jsonrepair";
 import { requireAuthUserId } from "@/lib/require-auth";
 import {
   detectStepsStrict,
@@ -11,6 +12,87 @@ function cleanJsonText(text) {
     .replace(/^```\s*/i, "")
     .replace(/```$/i, "")
     .trim();
+}
+
+/** Concatenate all `text` blocks — Claude sometimes splits output across multiple blocks; using only the first breaks JSON.parse. */
+function anthropicAssistantText(payload) {
+  const blocks = payload?.content;
+  if (!Array.isArray(blocks)) return "";
+  return blocks
+    .filter((item) => item?.type === "text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("");
+}
+
+/**
+ * First top-level `{ ... }` with string-aware brace matching (handles `}` inside overview strings).
+ */
+function extractFirstJsonObject(str) {
+  const start = str.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = start; i < str.length; i++) {
+    const c = str[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (inString) {
+      if (c === "\\") {
+        escapeNext = true;
+        continue;
+      }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return str.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/** Normalize smart quotes that break JSON.parse. */
+function normalizeJsonQuotes(s) {
+  return s.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'");
+}
+
+function parseModelInsightsJson(raw) {
+  let t = String(raw || "").trim();
+  t = t.replace(/^\uFEFF/, "");
+  t = cleanJsonText(t);
+  t = normalizeJsonQuotes(t);
+
+  let candidate = extractFirstJsonObject(t);
+  if (!candidate) {
+    const i0 = t.indexOf("{");
+    const i1 = t.lastIndexOf("}");
+    if (i0 !== -1 && i1 > i0) candidate = t.slice(i0, i1 + 1);
+  }
+  if (!candidate) return null;
+
+  const tryParse = (s) => {
+    try {
+      return JSON.parse(s);
+    } catch {
+      try {
+        const repaired = jsonrepair(s);
+        return JSON.parse(repaired);
+      } catch {
+        return null;
+      }
+    }
+  };
+
+  return tryParse(candidate);
 }
 
 /** Strips common AI hedges / “open invitation” closers the product doesn’t want shown. */
@@ -147,16 +229,20 @@ Mirror what *they* actually wrote (facts from the entries only). Phrases like "i
 
 Stay 100% grounded in the entries — no invented events or emotions. If the data is thin, say so kindly in the caveat.
 
-Return strict JSON only with these keys:
-- overview: one paragraph, 2–5 short sentences, every sentence addressed to "you".
-- patterns: array of 3–6 strings; each line speaks to "you" (like gentle observations a friend would make), not about "the writer".
-- caveat: **one short sentence** about limits of what you can see from the text (e.g. missing context). **Do not** invite ongoing conversation, therapy follow-ups, or lines like "beneath the surface", "let me know if you want to talk", "let me know if there's anything else", or similar — end cleanly.
+Your entire reply must be ONE valid JSON object only — no markdown fences, no preamble, no text before or after the JSON. Start with { and end with }.
 
-Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bullet labels like "Observation 1".`,
+Keys:
+- overview: string, one paragraph, 2–5 short sentences, every sentence addressed to "you".
+- patterns: array of 3–6 strings; each line speaks to "you".
+- caveat: one short sentence about limits of what you can see from the text. No "let me know if you want to talk" or similar.
+
+Escape double quotes inside strings as \\". Use \\n only if needed inside strings.
+
+Avoid: therapy jargon, "analysis indicates", case-study voice.`,
         messages: [
           {
             role: "user",
-            content: `Journal entries from the person you’re speaking to (newest first). Remember: answer only in second person — you’re talking back to them, kindly:\n${JSON.stringify(entries)}`
+            content: `Journal entries (newest first). Second person only. Output ONLY the JSON object:\n${JSON.stringify(entries)}`
           }
         ]
       })
@@ -169,14 +255,15 @@ Avoid: therapy jargon, "analysis indicates", "the user", case-study voice, bulle
     }
 
     const payload = await response.json();
-    const text = payload?.content?.find((item) => item?.type === "text")?.text?.trim() || "";
-    const cleaned = cleanJsonText(text);
+    const text = anthropicAssistantText(payload).trim();
+    if (!text) {
+      console.error("[diary-insights] Empty assistant text", JSON.stringify(payload?.content)?.slice(0, 500));
+      return Response.json(fallbackFromEntries(entries, { fallbackReason: "empty_ai" }));
+    }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      console.error("[diary-insights] JSON parse failed, raw:", cleaned.slice(0, 400));
+    const parsed = parseModelInsightsJson(text);
+    if (!parsed || typeof parsed !== "object") {
+      console.error("[diary-insights] JSON parse failed after repair, raw:", text.slice(0, 1200));
       return Response.json(fallbackFromEntries(entries, { fallbackReason: "parse_error" }));
     }
 
