@@ -961,7 +961,7 @@ function AiBadgeIcon() {
       viewBox="0 0 26 25"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="h-7 w-7 shrink-0 text-white dark:text-slate-900"
+      className="h-7 w-7 shrink-0 text-emerald-400 dark:text-emerald-400/90"
       aria-hidden="true"
     >
       <path
@@ -3124,7 +3124,7 @@ export default function ResilienceApp() {
                   <div className="mb-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">About you</p>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Used to make "What could go wrong today" more specific to your real life.
+                      Used to make &quot;What could go wrong&quot; more specific to your real life.
                     </p>
                     <div className="mt-3 grid gap-2">
                       <div className="space-y-1">
@@ -3289,39 +3289,38 @@ export default function ResilienceApp() {
                       )}
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            {reduceMotion ? (
-                              <span className="flex shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                            What could go wrong
+                          </p>
+                          {reduceMotion ? (
+                            <div className="mt-1.5 flex items-center gap-2">
+                              <span className="flex shrink-0 text-emerald-400 dark:text-emerald-400" aria-hidden>
                                 <Sparkles className="h-4 w-4" strokeWidth={2} />
                               </span>
-                            ) : (
-                              <motion.span
-                                className="flex shrink-0 text-emerald-600 dark:text-emerald-400"
-                                aria-hidden
-                                initial={{ opacity: 0, scale: 0.82, rotate: -14 }}
-                                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                              >
-                                <Sparkles className="h-4 w-4" strokeWidth={2} />
-                              </motion.span>
-                            )}
-                            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                              What could go wrong today
-                            </p>
-                          </div>
-                          {reduceMotion ? (
-                            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-700/85 dark:text-emerald-400/90">
-                              Today&apos;s rehearsal
-                            </p>
+                              <p className="text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-400 dark:text-emerald-400/90">
+                                Today&apos;s rehearsal
+                              </p>
+                            </div>
                           ) : (
-                            <motion.p
-                              className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-700/85 dark:text-emerald-400/90"
+                            <motion.div
+                              className="mt-1.5 flex items-center gap-2"
                               initial={{ opacity: 0, y: 6 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: 0.18, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                             >
-                              Today&apos;s rehearsal
-                            </motion.p>
+                              <motion.span
+                                className="flex shrink-0 text-emerald-400 dark:text-emerald-400"
+                                aria-hidden
+                                initial={{ opacity: 0, scale: 0.82, rotate: -14 }}
+                                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                transition={{ delay: 0.22, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                              >
+                                <Sparkles className="h-4 w-4" strokeWidth={2} />
+                              </motion.span>
+                              <p className="text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-400 dark:text-emerald-400/90">
+                                Today&apos;s rehearsal
+                              </p>
+                            </motion.div>
                           )}
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
@@ -3884,7 +3883,7 @@ export default function ResilienceApp() {
             <CardContent className="space-y-4">
               <div className="rounded-3xl p-1">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                  What could go wrong today
+                  What could go wrong
                 </p>
                 <Textarea
                   value={reflectionScenario}
