@@ -8,6 +8,7 @@ import {
   Bell,
   Brain,
   Calendar,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -708,7 +709,52 @@ const DIARY_MODAL_FIELDS = [
 const diaryModalFieldLabelClass =
   "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400";
 
-/** View: plain text only. Edit: standard boxed fields. */
+/** Read-only diary body: same sequential ceremony as Log → Trigger result (CeremonialInsightBlock). */
+function DiaryEntryModalFieldsViewOnly({ fields, draft, emptyPlaceholder }) {
+  const reduceMotion = useReducedMotion();
+  const revealKey = useMemo(
+    () =>
+      [
+        draft.title,
+        draft.scenario,
+        draft.fact,
+        draft.story,
+        draft.chosenResponse,
+        draft.lesson
+      ].join("\x1e"),
+    [
+      draft.title,
+      draft.scenario,
+      draft.fact,
+      draft.story,
+      draft.chosenResponse,
+      draft.lesson
+    ]
+  );
+
+  return (
+    <div className="space-y-4">
+      {fields.map(({ key, label }, sectionIndex) => {
+        const raw = draft[key];
+        const text = raw != null && String(raw).trim() ? String(raw) : "";
+        const display = text || (emptyPlaceholder === "—" ? "" : emptyPlaceholder);
+        return (
+          <CeremonialInsightBlock
+            key={key}
+            label={label}
+            text={display}
+            sectionIndex={sectionIndex}
+            reduceMotion={reduceMotion}
+            revealKey={revealKey}
+            isLesson={key === "lesson"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** View: ceremonial read-only (Trigger result pattern). Edit: standard boxed fields. */
 function DiaryEntryModalFields({ viewOnly, draft, onFieldChange, omitTitleAndScenario }) {
   const fields = omitTitleAndScenario
     ? DIARY_MODAL_FIELDS.filter((f) => f.key !== "title" && f.key !== "scenario")
@@ -716,24 +762,7 @@ function DiaryEntryModalFields({ viewOnly, draft, onFieldChange, omitTitleAndSce
   const emptyPlaceholder = omitTitleAndScenario ? "" : "—";
 
   if (viewOnly) {
-    return (
-      <div className="space-y-5">
-        {fields.map(({ key, label }) => {
-          const raw = draft[key];
-          const text = raw != null && String(raw).trim() ? String(raw) : "";
-          return (
-            <section key={key}>
-              <p className={diaryModalFieldLabelClass}>{label}</p>
-              <p
-                className={`mt-1.5 whitespace-pre-wrap text-base leading-relaxed text-slate-900 dark:text-slate-100 ${key === "lesson" ? "font-semibold" : ""}`}
-              >
-                {text || emptyPlaceholder}
-              </p>
-            </section>
-          );
-        })}
-      </div>
-    );
+    return <DiaryEntryModalFieldsViewOnly fields={fields} draft={draft} emptyPlaceholder={emptyPlaceholder} />;
   }
 
   return (
@@ -942,6 +971,343 @@ function AiBadgeIcon() {
   );
 }
 
+/** Shared word-by-word reveal; empty content shows an em dash. */
+function StaggeredWords({
+  text,
+  reduceMotion,
+  className = "",
+  baseDelay = 0,
+  wordStagger = 0.038,
+  yOffset = 8
+}) {
+  const t = String(text ?? "").trim();
+  if (!t) {
+    return (
+      <span className="italic text-slate-400 dark:text-slate-500" aria-hidden>
+        —
+      </span>
+    );
+  }
+  if (reduceMotion) {
+    return <span className={className}>{t}</span>;
+  }
+  const parts = t.split(/(\s+)/);
+  let wi = 0;
+  return (
+    <span className={className}>
+      {parts.map((part, i) => {
+        if (/^\s+$/.test(part)) {
+          return <span key={`sp-${i}`}>{part}</span>;
+        }
+        const delay = baseDelay + Math.min(wi++ * wordStagger, 2.2);
+        return (
+          <motion.span
+            key={`w-${i}`}
+            initial={{ opacity: 0, y: yOffset }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay, duration: 0.48, ease: [0.19, 1, 0.32, 1] }}
+            className="inline-block align-baseline"
+          >
+            {part}
+          </motion.span>
+        );
+      })}
+    </span>
+  );
+}
+
+function LogTriggerStepsReveal({ analysis, reduceMotion }) {
+  const items = [
+    analysis.step1 ? "Step 1: Facts vs Story" : null,
+    analysis.step2 ? "Step 2: Control Filter" : null,
+    analysis.step3 ? "Step 3: Chosen Response" : null
+  ].filter(Boolean);
+  if (items.length === 0) return null;
+  return (
+    <motion.div
+      initial={reduceMotion ? undefined : { opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50 via-white to-slate-50 p-4 ring-1 ring-emerald-300/45 dark:from-emerald-950/35 dark:via-slate-800 dark:to-slate-900 dark:ring-emerald-800/35"
+    >
+      {!reduceMotion && (
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400/65 to-transparent"
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          style={{ transformOrigin: "center" }}
+        />
+      )}
+      <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-emerald-800 dark:text-emerald-300">
+        Triggered steps
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {items.map((label, i) => (
+          <motion.span
+            key={label}
+            initial={reduceMotion ? undefined : { opacity: 0, scale: 0.9, y: 6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{
+              delay: reduceMotion ? 0 : 0.06 + i * 0.09,
+              duration: 0.4,
+              ease: [0.22, 1, 0.36, 1]
+            }}
+            className="inline-block"
+          >
+            <Badge>{label}</Badge>
+          </motion.span>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/** Seconds: first insight starts after trigger-step card; then each row; extra beat before Lesson. */
+const INSIGHT_SEQUENCE_FIRST = 0.92;
+const INSIGHT_SEQUENCE_GAP = 0.72;
+const INSIGHT_LESSON_EXTRA = 0.42;
+const INSIGHT_TEXT_AFTER_ROW = 0.36;
+
+function CeremonialInsightBlock({ label, text, sectionIndex, reduceMotion, revealKey, isLesson }) {
+  const lineKey = `${revealKey}-${label}`;
+  const isLessonRow = Boolean(isLesson || label === "Lesson");
+  const blockEnterDelay = reduceMotion
+    ? 0.06 * sectionIndex
+    : INSIGHT_SEQUENCE_FIRST +
+      sectionIndex * INSIGHT_SEQUENCE_GAP +
+      (isLessonRow ? INSIGHT_LESSON_EXTRA : 0);
+  const wordBaseDelay = reduceMotion ? 0 : blockEnterDelay + INSIGHT_TEXT_AFTER_ROW;
+
+  const Icon = isLessonRow ? BookOpen : Sparkles;
+
+  return (
+    <motion.section
+      initial={
+        reduceMotion
+          ? { opacity: 0 }
+          : {
+              opacity: 0,
+              y: 40,
+              scale: 0.9,
+              filter: "blur(12px)",
+              rotateX: 6
+            }
+      }
+      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", rotateX: 0 }}
+      transition={{
+        delay: blockEnterDelay,
+        duration: reduceMotion ? 0.28 : isLessonRow ? 0.78 : 0.62,
+        ease: [0.15, 1, 0.28, 1]
+      }}
+      style={reduceMotion ? undefined : { perspective: 1200 }}
+      className={
+        isLessonRow
+          ? "relative overflow-hidden rounded-2xl border-l-4 border-amber-400 bg-gradient-to-br from-amber-50 via-amber-50/90 to-emerald-50/50 p-4 pl-3 shadow-lg shadow-amber-500/15 ring-2 ring-amber-400/45 dark:border-amber-500 dark:from-amber-950/50 dark:via-slate-900 dark:to-emerald-950/40 dark:shadow-amber-900/20 dark:ring-amber-500/35"
+          : "relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/35 p-4 ring-1 ring-emerald-200/40 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/25 dark:ring-emerald-900/30"
+      }
+    >
+      {!reduceMotion && (
+        <motion.div
+          key={lineKey}
+          aria-hidden
+          className={
+            isLessonRow
+              ? "pointer-events-none absolute inset-x-6 top-0 h-[3px] bg-gradient-to-r from-transparent via-amber-400/85 to-transparent"
+              : "pointer-events-none absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent"
+          }
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{
+            delay: blockEnterDelay + 0.06,
+            duration: isLessonRow ? 1.05 : 0.88,
+            ease: [0.2, 1, 0.36, 1]
+          }}
+          style={{ transformOrigin: "center" }}
+        />
+      )}
+      <div className="flex gap-3">
+        <motion.div
+          className={
+            isLessonRow
+              ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-amber-400/70 bg-gradient-to-br from-amber-100 to-amber-200/80 text-xs font-bold tabular-nums text-amber-950 shadow-md shadow-amber-600/20 dark:border-amber-400 dark:from-amber-900/80 dark:to-amber-950 dark:text-amber-50"
+              : "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-300/60 bg-emerald-100/70 text-[11px] font-bold tabular-nums text-emerald-900 dark:border-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-100"
+          }
+          initial={reduceMotion ? undefined : { scale: 0, rotate: -18 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{
+            delay: blockEnterDelay + 0.12,
+            type: "spring",
+            stiffness: 280,
+            damping: 19
+          }}
+          aria-hidden
+        >
+          {String(sectionIndex + 1).padStart(2, "0")}
+        </motion.div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Icon
+              className={
+                isLessonRow
+                  ? "h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300"
+                  : "h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+              }
+              aria-hidden
+            />
+            <h3
+              className={
+                isLessonRow
+                  ? "text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-900 dark:text-amber-100"
+                  : "text-[10px] font-medium uppercase tracking-[0.22em] text-emerald-800/90 dark:text-emerald-300/95"
+              }
+            >
+              {label}
+            </h3>
+          </div>
+          {isLessonRow ? (
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.28em] text-amber-800/80 dark:text-amber-200/90">
+              Your takeaway
+            </p>
+          ) : null}
+          <div
+            className={
+              isLessonRow
+                ? "mt-3 text-lg font-semibold leading-snug tracking-tight text-amber-950 dark:text-amber-50 sm:text-xl"
+                : "mt-2.5 text-sm leading-relaxed text-slate-800 dark:text-slate-100"
+            }
+          >
+            <StaggeredWords
+              text={text}
+              reduceMotion={reduceMotion}
+              className="break-words [overflow-wrap:anywhere]"
+              baseDelay={wordBaseDelay}
+              wordStagger={isLessonRow ? 0.055 : 0.038}
+              yOffset={isLessonRow ? 14 : 8}
+            />
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+/** One row in the shared-diary list: gradient frame, step orb, scenario + lesson callouts (Trigger-result feel). */
+function SharedDiaryListEntryCard({ entry, index, entryProgramDay, rc, onOpen }) {
+  const reduceMotion = useReducedMotion();
+  const listDelay = reduceMotion ? 0.05 * index : 0.12 + index * 0.11;
+
+  const title = diaryTitleDisplay(entry);
+  const source = diarySourceLabel(entry);
+  const dateBits = [
+    entry.loggedDateKey
+      ? formatDateKeyDisplay(entry.loggedDateKey)
+      : entry.createdAt
+        ? new Date(entry.createdAt).toLocaleDateString()
+        : "",
+    entryProgramDay != null ? `Day ${entryProgramDay}` : ""
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <motion.article
+      layout
+      initial={reduceMotion ? undefined : { opacity: 0, y: 26, scale: 0.97, filter: "blur(10px)" }}
+      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      transition={{ delay: listDelay, duration: 0.55, ease: [0.15, 1, 0.28, 1] }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/35 p-4 ring-1 ring-emerald-200/45 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/30 dark:ring-emerald-900/35"
+    >
+      {!reduceMotion && (
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-5 top-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent"
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{ delay: listDelay + 0.04, duration: 0.8, ease: [0.2, 1, 0.36, 1] }}
+          style={{ transformOrigin: "center" }}
+        />
+      )}
+      <div className="flex gap-3">
+        <motion.div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-300/55 bg-emerald-100/70 text-[11px] font-bold tabular-nums text-emerald-900 dark:border-emerald-600 dark:bg-emerald-900/45 dark:text-emerald-100"
+          initial={reduceMotion ? undefined : { scale: 0, rotate: -14 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{
+            delay: listDelay + 0.07,
+            type: "spring",
+            stiffness: 280,
+            damping: 18
+          }}
+          aria-hidden
+        >
+          {String(index + 1).padStart(2, "0")}
+        </motion.div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-emerald-800/90 dark:text-emerald-300/90">
+              {source}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="mt-1.5 w-full rounded-xl px-1 text-left transition hover:bg-emerald-500/8 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/45 dark:hover:bg-emerald-400/8"
+          >
+            <span className="block whitespace-pre-wrap break-words text-lg font-semibold leading-snug text-slate-900 dark:text-slate-100">
+              {title}
+            </span>
+          </button>
+          {dateBits ? (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{dateBits}</p>
+          ) : null}
+          {rc ? (
+            <p className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+              <span className="inline-flex items-center gap-1">
+                <Heart className="h-3.5 w-3.5 text-rose-500" aria-hidden />
+                {rc.likeCount}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                {rc.commentCount}
+              </span>
+            </p>
+          ) : null}
+          {entry.scenario && entry.source !== "reflection" ? (
+            <div className="mt-3 rounded-xl border border-emerald-200/65 bg-white/70 px-3 py-2 dark:border-emerald-800/45 dark:bg-slate-900/45">
+              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-800/85 dark:text-emerald-300/85">
+                Scenario
+              </p>
+              <p className="mt-1 line-clamp-4 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
+                {entry.scenario}
+              </p>
+            </div>
+          ) : null}
+          {entry.moodBefore != null && entry.moodAfter != null ? (
+            <p className="mt-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+              Mood · {formatMoodPair(entry.moodBefore, entry.moodAfter)}
+            </p>
+          ) : null}
+          {entry.lesson ? (
+            <div className="mt-3 rounded-xl border border-amber-300/75 bg-gradient-to-br from-amber-50/95 to-amber-100/45 px-3 py-2.5 shadow-sm shadow-amber-600/10 dark:border-amber-600/45 dark:from-amber-950/55 dark:to-amber-950/25 dark:shadow-amber-900/20">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-900 dark:text-amber-200">
+                Lesson
+              </p>
+              <p className="mt-1 line-clamp-4 text-sm font-semibold leading-snug text-amber-950 dark:text-amber-50">
+                {entry.lesson}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs italic text-slate-400 dark:text-slate-500">No lesson logged.</p>
+          )}
+        </div>
+      </div>
+    </motion.article>
+  );
+}
+
 /** Ceremonial staggered reveal for the daily variable scenario (respects reduced motion). */
 function DailyScenarioReveal({ text, reduceMotion }) {
   if (!text?.trim()) {
@@ -958,8 +1324,6 @@ function DailyScenarioReveal({ text, reduceMotion }) {
       </p>
     );
   }
-  const parts = text.split(/(\s+)/);
-  let wordIndex = 0;
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -973,28 +1337,146 @@ function DailyScenarioReveal({ text, reduceMotion }) {
         className="mt-3 pr-8"
       >
         <p className="break-words text-2xl font-semibold leading-snug tracking-tight text-slate-900 [overflow-wrap:anywhere] dark:text-slate-100">
-          {parts.map((part, i) => {
-            if (/^\s+$/.test(part)) {
-              return <span key={`sp-${i}`}>{part}</span>;
-            }
-            const delay = Math.min(wordIndex++ * 0.045, 1.65);
-            return (
-              <motion.span
-                key={`w-${i}`}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+          <StaggeredWords text={text} reduceMotion={false} />
+        </p>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+/** Ceremonial blur + stagger reveal for AI journal pattern read (Progress tab). */
+function DiaryInsightsReveal({ insights, reduceMotion }) {
+  const revealKey = useMemo(
+    () =>
+      [
+        insights.overview,
+        ...(Array.isArray(insights.patterns) ? insights.patterns : []),
+        insights.caveat ?? "",
+        insights.source ?? "",
+        insights.fallbackReason ?? ""
+      ].join("\x1e"),
+    [insights]
+  );
+
+  if (reduceMotion) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-slate-700 dark:text-slate-300">{insights.overview}</p>
+        {Array.isArray(insights.patterns) && insights.patterns.length > 0 && (
+          <ul className="list-inside list-disc space-y-1 text-sm text-slate-600 dark:text-slate-400">
+            {insights.patterns.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        )}
+        {insights.caveat && (
+          <p className="text-xs text-slate-500 dark:text-slate-500">{insights.caveat}</p>
+        )}
+        {insights.source === "fallback" && (
+          <p className="text-xs text-amber-800 dark:text-amber-300/90">
+            {insights.fallbackReason === "missing_api_key" || insights.fallbackReason == null
+              ? "The deployed server doesn’t have ANTHROPIC_API_KEY (a local .env file is not used on Vercel). Add it under Project → Settings → Environment Variables for Production, redeploy, then Refresh."
+              : insights.fallbackReason === "anthropic_http"
+                ? "Anthropic returned an error (model name, billing, or rate limit). Check Vercel function logs; try Refresh in a moment."
+                : insights.fallbackReason === "parse_error" || insights.fallbackReason === "empty_ai"
+                  ? "The model reply couldn’t be used. Tap Refresh."
+                  : "Showing the on-device summary instead of the full AI read."}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const patternCount = Array.isArray(insights.patterns) ? insights.patterns.length : 0;
+  const caveatDelay = 0.42 + patternCount * 0.09;
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={revealKey}
+        role="region"
+        aria-label="AI pattern read"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, filter: "blur(8px)" }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        className="relative mt-3 overflow-hidden rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/50 to-slate-50/90 p-4 shadow-sm ring-1 ring-emerald-200/35 dark:border-emerald-800/55 dark:from-slate-900 dark:via-emerald-950/25 dark:to-slate-900 dark:ring-emerald-900/25"
+      >
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent"
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{ delay: 0.06, duration: 0.85, ease: [0.2, 1, 0.36, 1] }}
+          style={{ transformOrigin: "center" }}
+        />
+        <div className="flex items-center gap-2">
+          <motion.div
+            initial={{ scale: 0, rotate: -18 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 320, damping: 18, delay: 0.08 }}
+            aria-hidden
+          >
+            <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+          </motion.div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-emerald-800 dark:text-emerald-300">
+            Your pattern read
+          </p>
+        </div>
+        <motion.p
+          className="mt-3 text-sm leading-relaxed text-slate-800 dark:text-slate-100"
+          initial={{ opacity: 0, filter: "blur(12px)", y: 10 }}
+          animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+          transition={{ delay: 0.12, duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {insights.overview}
+        </motion.p>
+        {patternCount > 0 && (
+          <ul className="mt-4 space-y-2.5">
+            {insights.patterns.map((p, i) => (
+              <motion.li
+                key={`${i}-${p.slice(0, 48)}`}
+                className="flex gap-2.5 text-sm text-slate-700 dark:text-slate-300"
+                initial={{ opacity: 0, x: -14 }}
+                animate={{ opacity: 1, x: 0 }}
                 transition={{
-                  delay,
+                  delay: 0.28 + i * 0.09,
                   duration: 0.48,
                   ease: [0.22, 1, 0.36, 1]
                 }}
-                className="inline-block align-baseline"
               >
-                {part}
-              </motion.span>
-            );
-          })}
-        </p>
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)] dark:bg-emerald-400" aria-hidden />
+                <span className="min-w-0 leading-relaxed">{p}</span>
+              </motion.li>
+            ))}
+          </ul>
+        )}
+        {insights.caveat && (
+          <motion.p
+            className="mt-4 border-t border-emerald-200/50 pt-3 text-xs text-slate-500 dark:border-emerald-800/40 dark:text-slate-400"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: caveatDelay, duration: 0.4 }}
+          >
+            {insights.caveat}
+          </motion.p>
+        )}
+        {insights.source === "fallback" && (
+          <motion.p
+            className="mt-3 text-xs text-amber-800 dark:text-amber-300/90"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: caveatDelay + (insights.caveat ? 0.08 : 0), duration: 0.35 }}
+          >
+            {insights.fallbackReason === "missing_api_key" || insights.fallbackReason == null
+              ? "The deployed server doesn’t have ANTHROPIC_API_KEY (a local .env file is not used on Vercel). Add it under Project → Settings → Environment Variables for Production, redeploy, then Refresh."
+              : insights.fallbackReason === "anthropic_http"
+                ? "Anthropic returned an error (model name, billing, or rate limit). Check Vercel function logs; try Refresh in a moment."
+                : insights.fallbackReason === "parse_error" || insights.fallbackReason === "empty_ai"
+                  ? "The model reply couldn’t be used. Tap Refresh."
+                  : "Showing the on-device summary instead of the full AI read."}
+          </motion.p>
+        )}
       </motion.div>
     </AnimatePresence>
   );
@@ -1700,6 +2182,26 @@ export default function ResilienceApp() {
   const todayScenario = useMemo(
     () => dailyScenario || scenarioForDay(currentProgramDay),
     [currentProgramDay, dailyScenario]
+  );
+  /** Re-run log “Trigger result” ceremony when analyzed fields change. */
+  const triggerResultRevealKey = useMemo(
+    () =>
+      [
+        eventForm.fact,
+        eventForm.story,
+        eventForm.outsideControl,
+        eventForm.insideControl,
+        eventForm.chosenResponse,
+        eventForm.lesson
+      ].join("\x1e"),
+    [
+      eventForm.fact,
+      eventForm.story,
+      eventForm.outsideControl,
+      eventForm.insideControl,
+      eventForm.chosenResponse,
+      eventForm.lesson
+    ]
   );
   const lastCompletedEffective = useMemo(
     () =>
@@ -2886,12 +3388,20 @@ export default function ResilienceApp() {
                           </p>
                         )}
                       </div>
-                      <Textarea
-                        value={eventText}
-                        onChange={(e) => setEventText(e.target.value)}
-                        placeholder="My friend canceled and now I feel rejected."
-                        className="min-h-[180px]"
-                      />
+                      <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-700 dark:bg-emerald-950/40">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                            What happened?
+                          </p>
+                        </div>
+                        <Textarea
+                          id="log-event-text"
+                          value={eventText}
+                          onChange={(e) => setEventText(e.target.value)}
+                          placeholder="My friend canceled and now I feel rejected."
+                          className="reaction-border-loop min-h-[180px] border-emerald-500 bg-emerald-200/95 text-slate-900 placeholder:text-emerald-900 focus:ring-0 dark:border-emerald-400 dark:bg-emerald-500/25 dark:text-emerald-50 dark:placeholder:text-emerald-200"
+                        />
+                      </div>
                       <Button onClick={analyzeEvent} disabled={!eventText.trim() || isAnalyzing}>
                         {isAnalyzing ? "Analyzing..." : "Analyze entry"}
                       </Button>
@@ -2899,49 +3409,58 @@ export default function ResilienceApp() {
                   </Card>
                   <Card>
                     <CardHeader>
-                      <CardTitle>Trigger result</CardTitle>
-                      <CardDescription>The app picks the right steps.</CardDescription>
+                      <SectionTitle
+                        icon={Sparkles}
+                        title="Trigger result"
+                        subtitle="The app picks the right steps—revealed for you."
+                      />
                     </CardHeader>
                     <CardContent>
                       {analysis ? (
-                        <div className="space-y-4">
-                          <div className="rounded-3xl bg-slate-50 p-4 dark:bg-slate-800">
-                            <p className="text-sm text-slate-500 dark:text-slate-400">Triggered steps</p>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {analysis.step1 && <Badge>Step 1: Facts vs Story</Badge>}
-                              {analysis.step2 && <Badge>Step 2: Control Filter</Badge>}
-                              {analysis.step3 && <Badge>Step 3: Chosen Response</Badge>}
-                            </div>
-                          </div>
-                          <Textarea
-                            value={eventForm.fact}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, fact: e.target.value }))}
-                            placeholder="Facts"
+                        <div key={triggerResultRevealKey} className="space-y-4">
+                          <LogTriggerStepsReveal analysis={analysis} reduceMotion={reduceMotion} />
+                          <CeremonialInsightBlock
+                            label="Facts"
+                            text={eventForm.fact}
+                            sectionIndex={0}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
                           />
-                          <Textarea
-                            value={eventForm.story}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, story: e.target.value }))}
-                            placeholder="Story"
+                          <CeremonialInsightBlock
+                            label="Story"
+                            text={eventForm.story}
+                            sectionIndex={1}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
                           />
-                          <Textarea
-                            value={eventForm.outsideControl}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, outsideControl: e.target.value }))}
-                            placeholder="Outside your control"
+                          <CeremonialInsightBlock
+                            label="Outside your control"
+                            text={eventForm.outsideControl}
+                            sectionIndex={2}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
                           />
-                          <Textarea
-                            value={eventForm.insideControl}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, insideControl: e.target.value }))}
-                            placeholder="Inside your control"
+                          <CeremonialInsightBlock
+                            label="Inside your control"
+                            text={eventForm.insideControl}
+                            sectionIndex={3}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
                           />
-                          <Textarea
-                            value={eventForm.chosenResponse}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, chosenResponse: e.target.value }))}
-                            placeholder="Chosen response"
+                          <CeremonialInsightBlock
+                            label="Chosen response"
+                            text={eventForm.chosenResponse}
+                            sectionIndex={4}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
                           />
-                          <Textarea
-                            value={eventForm.lesson}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, lesson: e.target.value }))}
-                            placeholder="Lesson"
+                          <CeremonialInsightBlock
+                            label="Lesson"
+                            text={eventForm.lesson}
+                            sectionIndex={5}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
+                            isLesson
                           />
                           <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-800/60">
                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mood</p>
@@ -3104,7 +3623,7 @@ export default function ResilienceApp() {
                           ))}
                           {calendarCells.map((dayNumber, index) => {
                             if (!dayNumber) {
-                              return <div key={`blank-${index}`} className="h-8" />;
+                              return <div key={`blank-${index}`} className="min-h-[3.25rem]" aria-hidden />;
                             }
                             const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(
                               dayNumber
@@ -3121,24 +3640,56 @@ export default function ResilienceApp() {
                               return entryKey === dateKey;
                             });
 
+                            const dayCellTone =
+                              isToday
+                                ? hasEntries
+                                  ? progressCalTodayWithEntriesClass
+                                  : progressCalTodayEmptyClass
+                                : isSelected
+                                  ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                                  : hasEntries
+                                    ? progressCalPastCompletedClass
+                                    : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+
                             return (
                               <button
                                 key={dateKey}
                                 type="button"
                                 onClick={() => setSelectedProgressDate(dateKey)}
-                                className={`h-8 rounded-lg border text-xs font-medium transition ${
-                                  isToday
-                                    ? hasEntries
-                                      ? progressCalTodayWithEntriesClass
-                                      : progressCalTodayEmptyClass
-                                    : isSelected
-                                      ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
-                                      : hasEntries
-                                        ? progressCalPastCompletedClass
-                                        : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                                }`}
+                                className={`flex min-h-[3.25rem] w-full items-center justify-center rounded-lg border px-1 py-1 text-xs font-medium leading-none transition ${dayCellTone}`}
+                                aria-label={
+                                  hasEntries
+                                    ? `${dateKey}: logged, day ${dayNumber}`
+                                    : `${dateKey}: no entry, day ${dayNumber}`
+                                }
                               >
-                                {dayNumber}
+                                {hasEntries ? (
+                                  <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center">
+                                    <span
+                                      className={`flex h-9 w-9 items-center justify-center rounded-full border-2 tabular-nums text-xs font-semibold leading-none ${
+                                        isSelected && !isToday
+                                          ? "border-emerald-800 bg-emerald-600 text-white shadow-sm dark:border-emerald-300 dark:bg-emerald-600 dark:!text-white"
+                                          : isToday
+                                            ? "border-emerald-400 bg-emerald-500 text-white shadow-md dark:border-emerald-300 dark:bg-emerald-500 dark:!text-white"
+                                            : "border-emerald-700 bg-emerald-600 text-white shadow-sm dark:border-emerald-400 dark:bg-emerald-600 dark:!text-white"
+                                      }`}
+                                    >
+                                      {dayNumber}
+                                    </span>
+                                    <span
+                                      className={`absolute -right-0.5 -top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full shadow-md ring-2 ring-white dark:ring-emerald-700 ${
+                                        isSelected && !isToday
+                                          ? "bg-white text-emerald-700"
+                                          : "bg-white text-emerald-600 dark:bg-emerald-50 dark:text-emerald-700"
+                                      }`}
+                                      aria-hidden
+                                    >
+                                      <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="tabular-nums">{dayNumber}</span>
+                                )}
                               </button>
                             );
                           })}
@@ -3214,32 +3765,7 @@ export default function ResilienceApp() {
                           <p className="mt-3 text-sm text-red-600 dark:text-red-400">{diaryInsightsError}</p>
                         )}
                         {diaryInsights && !diaryInsightsLoading && (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-sm text-slate-700 dark:text-slate-300">{diaryInsights.overview}</p>
-                            {Array.isArray(diaryInsights.patterns) && diaryInsights.patterns.length > 0 && (
-                              <ul className="list-inside list-disc space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                                {diaryInsights.patterns.map((p, i) => (
-                                  <li key={i}>{p}</li>
-                                ))}
-                              </ul>
-                            )}
-                            {diaryInsights.caveat && (
-                              <p className="text-xs text-slate-500 dark:text-slate-500">{diaryInsights.caveat}</p>
-                            )}
-                            {diaryInsights.source === "fallback" && (
-                              <p className="text-xs text-amber-800 dark:text-amber-300/90">
-                                {diaryInsights.fallbackReason === "missing_api_key" ||
-                                diaryInsights.fallbackReason == null
-                                  ? "The deployed server doesn’t have ANTHROPIC_API_KEY (a local .env file is not used on Vercel). Add it under Project → Settings → Environment Variables for Production, redeploy, then Refresh."
-                                  : diaryInsights.fallbackReason === "anthropic_http"
-                                    ? "Anthropic returned an error (model name, billing, or rate limit). Check Vercel function logs; try Refresh in a moment."
-                                    : diaryInsights.fallbackReason === "parse_error" ||
-                                        diaryInsights.fallbackReason === "empty_ai"
-                                      ? "The model reply couldn’t be used. Tap Refresh."
-                                      : "Showing the on-device summary instead of the full AI read."}
-                              </p>
-                            )}
-                          </div>
+                          <DiaryInsightsReveal insights={diaryInsights} reduceMotion={reduceMotion} />
                         )}
                       </div>
                     </CardContent>
@@ -4137,10 +4663,11 @@ export default function ResilienceApp() {
           <Card className="max-h-[92vh] w-full max-w-2xl overflow-auto">
             <CardHeader className="relative pr-14">
               <ModalCloseButton onClick={closeSharedDiaryModal} />
-              <CardTitle className="break-words">
-                {sharedDiaryOwnerLabel ? `${sharedDiaryOwnerLabel}'s diary` : "Shared diary"}
-              </CardTitle>
-              <CardDescription>Read-only · you can like and comment on entries</CardDescription>
+              <SectionTitle
+                icon={Sparkles}
+                title={sharedDiaryOwnerLabel ? `${sharedDiaryOwnerLabel}'s diary` : "Shared diary"}
+                subtitle="Read-only · open an entry to see the full ceremony · like and comment below"
+              />
             </CardHeader>
             <CardContent>
               {sharedDiaryLoading ? (
@@ -4155,56 +4682,19 @@ export default function ResilienceApp() {
                 <p className="text-sm text-slate-500 dark:text-slate-400">No entries yet.</p>
               ) : null}
               {!sharedDiaryLoading && !sharedDiaryError && sharedDiarySorted.length > 0 ? (
-                <div className="grid gap-4">
-                  {sharedDiarySorted.map((entry) => {
+                <div key={sharedDiaryOwnerId || "shared"} className="grid gap-4">
+                  {sharedDiarySorted.map((entry, index) => {
                     const entryProgramDay = diaryEntryProgramDayDisplay(sharedDiaryAnchorKey, entry);
                     const rc = entry.id ? sharedEntryReactionCounts[entry.id] : null;
                     return (
-                      <div key={entry.id || diaryTitleDisplay(entry)} className="rounded-3xl bg-slate-50 p-5 dark:bg-slate-800">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
-                            {diarySourceLabel(entry)}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => openSharedEntryViewer(entry)}
-                            className="mt-1 w-full whitespace-pre-wrap break-words text-left text-lg font-semibold leading-snug text-slate-900 transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:text-slate-100 dark:hover:text-slate-200 dark:focus-visible:ring-slate-500"
-                          >
-                            {diaryTitleDisplay(entry)}
-                          </button>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {entry.loggedDateKey
-                              ? formatDateKeyDisplay(entry.loggedDateKey)
-                              : entry.createdAt
-                                ? new Date(entry.createdAt).toLocaleDateString()
-                                : ""}
-                            {entryProgramDay != null ? ` · Day ${entryProgramDay}` : ""}
-                          </p>
-                          {rc ? (
-                            <p className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                              <span className="inline-flex items-center gap-1">
-                                <Heart className="h-3.5 w-3.5 text-rose-500" aria-hidden />
-                                {rc.likeCount}
-                              </span>
-                              <span className="inline-flex items-center gap-1">
-                                <MessageCircle className="h-3.5 w-3.5" aria-hidden />
-                                {rc.commentCount}
-                              </span>
-                            </p>
-                          ) : null}
-                        </div>
-                        {entry.scenario && entry.source !== "reflection" ? (
-                          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700 dark:text-slate-300">
-                            {entry.scenario}
-                          </p>
-                        ) : null}
-                        {entry.moodBefore != null && entry.moodAfter != null ? (
-                          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                            Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
-                          </p>
-                        ) : null}
-                        <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">{entry.lesson || "No lesson logged."}</p>
-                      </div>
+                      <SharedDiaryListEntryCard
+                        key={entry.id || diaryTitleDisplay(entry)}
+                        entry={entry}
+                        index={index}
+                        entryProgramDay={entryProgramDay}
+                        rc={rc}
+                        onOpen={() => openSharedEntryViewer(entry)}
+                      />
                     );
                   })}
                 </div>
@@ -4219,13 +4709,15 @@ export default function ResilienceApp() {
           <Card className="max-h-[92vh] w-full max-w-2xl overflow-auto">
             <CardHeader className="relative pr-14">
               <ModalCloseButton onClick={closeSharedEntryViewer} />
-              <CardTitle className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span>Diary entry</span>
-                {sharedViewingDateLabel ? (
-                  <span className="text-sm font-normal text-slate-500 dark:text-slate-400">{sharedViewingDateLabel}</span>
-                ) : null}
-              </CardTitle>
-              <CardDescription>Read-only · like and comment below</CardDescription>
+              <SectionTitle
+                icon={Sparkles}
+                title="Diary entry"
+                subtitle={
+                  sharedViewingDateLabel
+                    ? `${sharedViewingDateLabel} · Read-only · full ceremony · like and comment below`
+                    : "Read-only · full ceremony · like and comment below"
+                }
+              />
             </CardHeader>
             <CardContent className="space-y-3">
               <DiaryEntryModalFields
