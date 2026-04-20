@@ -3667,14 +3667,14 @@ export default function ResilienceApp() {
                                   <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center">
                                     <span className="tabular-nums text-xs font-semibold leading-none">{dayNumber}</span>
                                     <span
-                                      className={`absolute -right-0.5 -top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full shadow-md ring-2 ring-white dark:ring-slate-800 ${
+                                      className={`absolute -right-2 -top-2 flex h-[18px] w-[18px] items-center justify-center rounded-full text-white shadow-md ring-2 ring-white dark:ring-slate-800 ${
                                         isSelected && !isToday
-                                          ? "bg-white text-emerald-700"
-                                          : "bg-white text-emerald-600 dark:bg-emerald-50 dark:text-emerald-700"
+                                          ? "bg-emerald-700 dark:bg-emerald-600"
+                                          : "bg-emerald-600 dark:bg-emerald-500"
                                       }`}
                                       aria-hidden
                                     >
-                                      <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+                                      <Check className="h-2.5 w-2.5 text-white" strokeWidth={3.5} />
                                     </span>
                                   </span>
                                 ) : (
