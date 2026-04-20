@@ -3665,19 +3665,9 @@ export default function ResilienceApp() {
                               >
                                 {hasEntries ? (
                                   <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center">
+                                    <span className="tabular-nums text-xs font-semibold leading-none">{dayNumber}</span>
                                     <span
-                                      className={`flex h-9 w-9 items-center justify-center rounded-full border-2 tabular-nums text-xs font-semibold leading-none ${
-                                        isSelected && !isToday
-                                          ? "border-emerald-800 bg-emerald-600 text-white shadow-sm dark:border-emerald-300 dark:bg-emerald-600 dark:!text-white"
-                                          : isToday
-                                            ? "border-emerald-400 bg-emerald-500 text-white shadow-md dark:border-emerald-300 dark:bg-emerald-500 dark:!text-white"
-                                            : "border-emerald-700 bg-emerald-600 text-white shadow-sm dark:border-emerald-400 dark:bg-emerald-600 dark:!text-white"
-                                      }`}
-                                    >
-                                      {dayNumber}
-                                    </span>
-                                    <span
-                                      className={`absolute -right-0.5 -top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full shadow-md ring-2 ring-white dark:ring-emerald-700 ${
+                                      className={`absolute -right-0.5 -top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full shadow-md ring-2 ring-white dark:ring-slate-800 ${
                                         isSelected && !isToday
                                           ? "bg-white text-emerald-700"
                                           : "bg-white text-emerald-600 dark:bg-emerald-50 dark:text-emerald-700"
