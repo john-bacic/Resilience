@@ -868,8 +868,11 @@ function Badge({ children, className = "" }) {
 }
 function Progress({ value }) {
   return (
-    <div className="h-3 w-full rounded-full bg-slate-200 dark:bg-slate-700">
-      <div className="h-3 rounded-full bg-slate-900 dark:bg-slate-100" style={{ width: `${value}%` }} />
+    <div className="h-3 w-full rounded-full bg-emerald-100/90 dark:bg-emerald-950/50">
+      <div
+        className="h-3 rounded-full bg-emerald-600 shadow-sm shadow-emerald-600/25 dark:bg-emerald-400 dark:shadow-emerald-400/20"
+        style={{ width: `${value}%` }}
+      />
     </div>
   );
 }
