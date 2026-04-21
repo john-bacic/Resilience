@@ -343,6 +343,17 @@ function isDiaryLogEntry(entry) {
   return false;
 }
 
+/** Reflection saves often duplicate scenario into `title`; read-only UI shows one block. */
+function mergedReflectionScenarioRehearsalText(draft) {
+  const t = String(draft?.title ?? "").trim();
+  const s = String(draft?.scenario ?? "").trim();
+  if (t === s) return t || s;
+  if (!s) return t;
+  if (!t) return s;
+  if (s.startsWith(t) || t.startsWith(s)) return s.length >= t.length ? s : t;
+  return `${t}\n\n${s}`;
+}
+
 function profileToScenarioContext(profile) {
   if (!profile || typeof profile !== "object") return "";
   const entries = [
@@ -712,24 +723,10 @@ const diaryModalFieldLabelClass =
 /** Read-only diary body: same sequential ceremony as Log → Trigger result (CeremonialInsightBlock). */
 function DiaryEntryModalFieldsViewOnly({ fields, draft, emptyPlaceholder }) {
   const reduceMotion = useReducedMotion();
+  const keysSig = fields.map((f) => f.key).join("|");
   const revealKey = useMemo(
-    () =>
-      [
-        draft.title,
-        draft.scenario,
-        draft.fact,
-        draft.story,
-        draft.chosenResponse,
-        draft.lesson
-      ].join("\x1e"),
-    [
-      draft.title,
-      draft.scenario,
-      draft.fact,
-      draft.story,
-      draft.chosenResponse,
-      draft.lesson
-    ]
+    () => fields.map(({ key }) => String(draft[key] ?? "")).join("\x1e"),
+    [keysSig, draft]
   );
 
   return (
@@ -755,14 +752,32 @@ function DiaryEntryModalFieldsViewOnly({ fields, draft, emptyPlaceholder }) {
 }
 
 /** View: ceremonial read-only (Trigger result pattern). Edit: standard boxed fields. */
-function DiaryEntryModalFields({ viewOnly, draft, onFieldChange, omitTitleAndScenario }) {
+function DiaryEntryModalFields({
+  viewOnly,
+  draft,
+  onFieldChange,
+  omitTitleAndScenario,
+  mergeTitleScenarioAsRehearsal = false
+}) {
   const fields = omitTitleAndScenario
     ? DIARY_MODAL_FIELDS.filter((f) => f.key !== "title" && f.key !== "scenario")
-    : DIARY_MODAL_FIELDS;
+    : viewOnly && mergeTitleScenarioAsRehearsal
+      ? [
+          { key: "_scenarioRehearsal", label: "Scenario rehearsal" },
+          ...DIARY_MODAL_FIELDS.filter((f) => f.key !== "title" && f.key !== "scenario")
+        ]
+      : DIARY_MODAL_FIELDS;
   const emptyPlaceholder = omitTitleAndScenario ? "" : "—";
 
+  const resolvedDraft =
+    viewOnly && mergeTitleScenarioAsRehearsal && !omitTitleAndScenario
+      ? { ...draft, _scenarioRehearsal: mergedReflectionScenarioRehearsalText(draft) }
+      : draft;
+
   if (viewOnly) {
-    return <DiaryEntryModalFieldsViewOnly fields={fields} draft={draft} emptyPlaceholder={emptyPlaceholder} />;
+    return (
+      <DiaryEntryModalFieldsViewOnly fields={fields} draft={resolvedDraft} emptyPlaceholder={emptyPlaceholder} />
+    );
   }
 
   return (
@@ -2111,6 +2126,13 @@ export default function ResilienceApp() {
     const entry = app.diary.find((e) => e.id === editingDiaryId);
     return entry ? isDiaryLogEntry(entry) : false;
   }, [editingDiaryId, isDiaryEditModalOpen, app.diary]);
+
+  /** Morning reflection read-only: title and scenario are the same — show one "Scenario rehearsal" block. */
+  const mergeReflectionRehearsalInDiaryModalView = useMemo(() => {
+    if (!editingDiaryId || !isDiaryEditModalOpen || !diaryEntryModalViewOnly) return false;
+    const entry = app.diary.find((e) => e.id === editingDiaryId);
+    return Boolean(entry && entry.source === "reflection");
+  }, [editingDiaryId, isDiaryEditModalOpen, diaryEntryModalViewOnly, app.diary]);
 
   const editingDiaryEntryMoodPair = useMemo(() => {
     if (!editingDiaryId || !isDiaryEditModalOpen) return null;
@@ -4310,6 +4332,7 @@ export default function ResilienceApp() {
                 viewOnly={diaryEntryModalViewOnly}
                 draft={editingDiaryDraft}
                 omitTitleAndScenario={omitTitleScenarioInDiaryModal}
+                mergeTitleScenarioAsRehearsal={mergeReflectionRehearsalInDiaryModalView}
                 onFieldChange={(key, value) =>
                   setEditingDiaryDraft((prev) => ({ ...prev, [key]: value }))
                 }
@@ -4787,6 +4810,7 @@ export default function ResilienceApp() {
                 viewOnly
                 draft={sharedViewingDraft}
                 omitTitleAndScenario={sharedViewingOmitTitleScenario}
+                mergeTitleScenarioAsRehearsal={sharedViewingEntry?.source === "reflection"}
                 onFieldChange={() => {}}
               />
               {sharedViewingMoodPair != null ? (
