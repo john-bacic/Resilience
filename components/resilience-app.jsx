@@ -1527,6 +1527,8 @@ export default function ResilienceApp() {
   const deleteUndoTimerRef = useRef(null);
   const [latestCommit, setLatestCommit] = useState(null);
   const [latestCommitUrl, setLatestCommitUrl] = useState("");
+  /** null = unknown / loading; true = ANTHROPIC_API_KEY present on server; false = missing or fetch failed */
+  const [anthropicApiOk, setAnthropicApiOk] = useState(null);
   const [isClient, setIsClient] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("default");
   const [isPushEnabled, setIsPushEnabled] = useState(false);
@@ -1735,12 +1737,19 @@ export default function ResilienceApp() {
   async function refreshVersionInfo() {
     try {
       const response = await fetch("/api/version", { cache: "no-store" });
-      if (!response.ok) return;
+      if (!response.ok) {
+        setAnthropicApiOk(false);
+        return;
+      }
       const payload = await response.json();
       setLatestCommit(payload?.commit || null);
       setLatestCommitUrl(payload?.url || "");
+      setAnthropicApiOk(
+        typeof payload?.anthropicConfigured === "boolean" ? payload.anthropicConfigured : null
+      );
     } catch (error) {
       console.error(error);
+      setAnthropicApiOk(false);
     }
   }
 
@@ -4051,22 +4060,48 @@ export default function ResilienceApp() {
       </div>
       <div className="mx-auto mt-2 max-w-7xl text-center text-xs text-slate-400 dark:text-slate-500">
         <div>for Sean</div>
-        {latestCommit ? (
-          latestCommitUrl ? (
-            <a
-              href={latestCommitUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="transition hover:text-slate-500 dark:hover:text-slate-400"
-            >
-              Build commit: {latestCommit}
-            </a>
+        <span className="inline-flex items-center justify-center gap-2">
+          <span
+            role="status"
+            aria-label={
+              anthropicApiOk === true
+                ? "AI API configured on server"
+                : anthropicApiOk === false
+                  ? "AI API not configured or check failed"
+                  : "AI API status loading"
+            }
+            title={
+              anthropicApiOk === true
+                ? "Anthropic API key is set on the server (AI routes can call the API)."
+                : anthropicApiOk === false
+                  ? "No Anthropic key on the server, or version check failed. Set ANTHROPIC_API_KEY and redeploy."
+                  : "Checking…"
+            }
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+              anthropicApiOk === true
+                ? "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
+                : anthropicApiOk === false
+                  ? "bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.2)]"
+                  : "bg-slate-400 dark:bg-slate-500"
+            }`}
+          />
+          {latestCommit ? (
+            latestCommitUrl ? (
+              <a
+                href={latestCommitUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="transition hover:text-slate-500 dark:hover:text-slate-400"
+              >
+                Build commit: {latestCommit}
+              </a>
+            ) : (
+              <span>Build commit: {latestCommit}</span>
+            )
           ) : (
-            <span>Build commit: {latestCommit}</span>
-          )
-        ) : (
-          <span>Build commit: --</span>
-        )}
+            <span>Build commit: --</span>
+          )}
+        </span>
       </div>
 
       {isReminderModalOpen && (

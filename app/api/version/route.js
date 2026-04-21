@@ -6,6 +6,9 @@ export async function GET() {
   const authResult = await requireAuthUserId();
   if ("response" in authResult) return authResult.response;
 
+  const rawKey = process.env.ANTHROPIC_API_KEY;
+  const anthropicConfigured = typeof rawKey === "string" && rawKey.trim().length > 0;
+
   try {
     const repo = process.env.GITHUB_REPO || DEFAULT_REPO;
     const response = await fetch(`https://api.github.com/repos/${repo}/commits/main`, {
@@ -17,7 +20,10 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      return Response.json({ commit: null, repo, error: "Failed to fetch commit" }, { status: 200 });
+      return Response.json(
+        { commit: null, repo, error: "Failed to fetch commit", anthropicConfigured },
+        { status: 200 }
+      );
     }
 
     const payload = await response.json();
@@ -31,10 +37,14 @@ export async function GET() {
       sha,
       committedAt,
       url: htmlUrl,
-      repo
+      repo,
+      anthropicConfigured
     });
   } catch (error) {
     console.error(error);
-    return Response.json({ commit: null, error: "Version lookup failed" }, { status: 200 });
+    return Response.json(
+      { commit: null, error: "Version lookup failed", anthropicConfigured },
+      { status: 200 }
+    );
   }
 }
