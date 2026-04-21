@@ -88,7 +88,8 @@ export async function GET(request) {
   if (avoid) seenSet.add(normalizeScenarioText(avoid));
   const fallback = fallbackForDay(day);
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const rawKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = typeof rawKey === "string" ? rawKey.trim() : "";
   if (!apiKey) {
     return Response.json({ scenario: fallback, source: "fallback" });
   }

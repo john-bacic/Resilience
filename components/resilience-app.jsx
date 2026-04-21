@@ -1377,7 +1377,7 @@ function DiaryInsightsReveal({ insights, reduceMotion }) {
         )}
         {insights.source === "fallback" && (
           <p className="text-xs text-amber-800 dark:text-amber-300/90">
-            {insights.fallbackReason === "missing_api_key" || insights.fallbackReason == null
+            {insights.fallbackReason === "missing_api_key"
               ? "The deployed server doesn’t have ANTHROPIC_API_KEY (a local .env file is not used on Vercel). Add it under Project → Settings → Environment Variables for Production, redeploy, then Refresh."
               : insights.fallbackReason === "anthropic_http"
                 ? "Anthropic returned an error (model name, billing, or rate limit). Check Vercel function logs; try Refresh in a moment."
@@ -1471,7 +1471,7 @@ function DiaryInsightsReveal({ insights, reduceMotion }) {
             animate={{ opacity: 1 }}
             transition={{ delay: caveatDelay + (insights.caveat ? 0.08 : 0), duration: 0.35 }}
           >
-            {insights.fallbackReason === "missing_api_key" || insights.fallbackReason == null
+            {insights.fallbackReason === "missing_api_key"
               ? "The deployed server doesn’t have ANTHROPIC_API_KEY (a local .env file is not used on Vercel). Add it under Project → Settings → Environment Variables for Production, redeploy, then Refresh."
               : insights.fallbackReason === "anthropic_http"
                 ? "Anthropic returned an error (model name, billing, or rate limit). Check Vercel function logs; try Refresh in a moment."

@@ -115,7 +115,8 @@ export async function POST(request) {
       return Response.json({ error: "reaction is required" }, { status: 400 });
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const rawKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = typeof rawKey === "string" ? rawKey.trim() : "";
     if (!apiKey) {
       return Response.json({
         reflection: emptyReflection,
