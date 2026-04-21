@@ -221,7 +221,7 @@ export async function POST(request) {
     return Response.json(fallbackFromEntries(entries, { fallbackReason: "missing_api_key" }));
   }
 
-  const model = process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307";
+  const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
 
   const INSIGHTS_TOOL = {
     name: "submit_journal_insights",
