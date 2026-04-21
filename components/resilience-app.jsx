@@ -1529,6 +1529,8 @@ export default function ResilienceApp() {
   const [latestCommitUrl, setLatestCommitUrl] = useState("");
   /** null = unknown / loading; true = ANTHROPIC_API_KEY present on server; false = missing or fetch failed */
   const [anthropicApiOk, setAnthropicApiOk] = useState(null);
+  /** SET from GET /api/state: no Postgres env, or DB error (degraded) — progress may not match what you expect */
+  const [statePersistenceWarning, setStatePersistenceWarning] = useState(null);
   const [isClient, setIsClient] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("default");
   const [isPushEnabled, setIsPushEnabled] = useState(false);
@@ -1957,6 +1959,13 @@ export default function ResilienceApp() {
         const payload = await response.json();
         if (cancelled) return;
         setApp(normalizeAppState(payload?.state));
+        if (payload?.degraded) {
+          setStatePersistenceWarning("degraded");
+        } else if (payload?.source === "memory") {
+          setStatePersistenceWarning("memory");
+        } else {
+          setStatePersistenceWarning(null);
+        }
       } catch (error) {
         if (error?.name !== "AbortError") console.error(error);
       } finally {
@@ -3405,13 +3414,25 @@ export default function ResilienceApp() {
                             What happened?
                           </p>
                         </div>
-                        <Textarea
-                          id="log-event-text"
-                          value={eventText}
-                          onChange={(e) => setEventText(e.target.value)}
-                          placeholder="My friend canceled and now I feel rejected."
-                          className="reaction-border-loop min-h-[180px] border-emerald-500 bg-emerald-200/95 text-slate-900 placeholder:text-emerald-900 focus:ring-0 dark:border-emerald-400 dark:bg-emerald-500/25 dark:text-emerald-50 dark:placeholder:text-emerald-200"
-                        />
+                        <div className="relative">
+                          <Textarea
+                            id="log-event-text"
+                            value={eventText}
+                            onChange={(e) => setEventText(e.target.value)}
+                            placeholder="My friend canceled and now I feel rejected."
+                            className="reaction-border-loop min-h-[180px] border-emerald-500 bg-emerald-200/95 pr-10 text-slate-900 placeholder:text-emerald-900 focus:ring-0 dark:border-emerald-400 dark:bg-emerald-500/25 dark:text-emerald-50 dark:placeholder:text-emerald-200"
+                          />
+                          {eventText.trim() !== "" && (
+                            <button
+                              type="button"
+                              onClick={() => setEventText("")}
+                              className="absolute right-2 top-2 rounded-md p-1 text-emerald-800/90 transition hover:bg-emerald-600/15 hover:text-emerald-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 dark:text-emerald-100/90 dark:hover:bg-emerald-400/15 dark:hover:text-emerald-50 dark:focus-visible:ring-emerald-400"
+                              aria-label="Clear what happened"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <Button onClick={analyzeEvent} disabled={!eventText.trim() || isAnalyzing}>
                         {isAnalyzing ? "Analyzing..." : "Analyze entry"}
@@ -4058,7 +4079,22 @@ export default function ResilienceApp() {
           </button>
         )}
       </div>
-      <div className="mx-auto mt-2 max-w-7xl text-center text-xs text-slate-400 dark:text-slate-500">
+      <div className="mx-auto mt-2 max-w-7xl px-3 text-center text-xs text-slate-400 dark:text-slate-500">
+        {statePersistenceWarning === "degraded" && (
+          <p className="mb-3 max-w-xl mx-auto rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2 text-left text-[13px] leading-snug text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
+            <strong className="font-semibold">Database unreachable.</strong> The app loaded empty defaults; your
+            progress may still be in Postgres when the DB is back. Check Vercel → project → Storage / env{" "}
+            <span className="font-mono text-[11px]">POSTGRES_URL</span>, Neon dashboard (paused?), and function
+            logs for GET /api/state.
+          </p>
+        )}
+        {statePersistenceWarning === "memory" && (
+          <p className="mb-3 max-w-xl mx-auto rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2 text-left text-[13px] leading-snug text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
+            <strong className="font-semibold">No Postgres on the server.</strong> Progress is not durable (serverless
+            memory only). Add <span className="font-mono text-[11px]">POSTGRES_URL</span> from Vercel Postgres and
+            redeploy so saves persist.
+          </p>
+        )}
         <div>for Sean</div>
         <span className="inline-flex items-center justify-center gap-2">
           <span

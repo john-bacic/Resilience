@@ -38,9 +38,12 @@ export async function GET() {
         VALUES (${userId}, ${JSON.stringify(defaultState)}::jsonb, NOW())
         ON CONFLICT (user_id) DO NOTHING;
       `;
-      return Response.json({ state: defaultState });
+      return Response.json({ state: defaultState, source: "postgres" });
     }
-    return Response.json({ state: { ...defaultState, ...rows[0].state } });
+    return Response.json({
+      state: { ...defaultState, ...rows[0].state },
+      source: "postgres"
+    });
   } catch (error) {
     console.error("GET /api/state failed, using default state", error);
     return Response.json(
@@ -77,7 +80,7 @@ export async function PUT(request) {
       SET state = EXCLUDED.state,
           updated_at = NOW();
     `;
-    return Response.json({ state: safeState });
+    return Response.json({ state: safeState, source: "postgres" });
   } catch (error) {
     console.error(error);
     return Response.json({ error: "Failed to save app state" }, { status: 500 });
