@@ -687,7 +687,9 @@ function Button({ className = "", variant = "default", type = "button", children
   const style =
     variant === "outline"
       ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-      : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
+      : variant === "lime"
+        ? "border border-emerald-300 bg-emerald-50 font-medium text-emerald-800 shadow-sm shadow-emerald-900/10 hover:bg-emerald-100/90 hover:shadow-md hover:shadow-emerald-900/15 focus-visible:ring-2 focus-visible:ring-emerald-400/60 focus-visible:ring-offset-2 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-200 dark:shadow-black/25 dark:hover:bg-emerald-900/55 dark:hover:shadow-md dark:hover:shadow-black/30 dark:focus-visible:ring-emerald-500/50"
+        : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
   return (
     <button type={type} className={`${base} ${style} ${className}`} {...props}>
       {children}
@@ -3391,12 +3393,16 @@ export default function ResilienceApp() {
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-3">
-                      <Button onClick={startReflection}>
+                    <div className="flex w-full min-w-0 flex-row flex-wrap items-center gap-3 max-[319px]:flex-col max-[319px]:items-start">
+                      <Button className="w-fit shrink-0 self-start min-[320px]:self-auto" onClick={startReflection}>
                         Start reflection
                         <ChevronRight className="ml-2 h-4 w-4" />
                       </Button>
-                      <Button variant="outline" onClick={() => setTab("log")}>
+                      <Button
+                        variant="lime"
+                        className="w-fit shrink-0 self-end min-[320px]:ml-auto min-[320px]:self-auto"
+                        onClick={() => setTab("log")}
+                      >
                         Log real event
                       </Button>
                     </div>
