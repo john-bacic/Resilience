@@ -3336,7 +3336,7 @@ export default function ResilienceApp() {
                           </p>
                           {reduceMotion ? (
                             <div className="mt-1.5 flex items-center gap-2">
-                              <span className="flex shrink-0 text-emerald-400 dark:text-emerald-400/90" aria-hidden>
+                              <span className="flex shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden>
                                 <Sparkles className="h-4 w-4" strokeWidth={2} />
                               </span>
                               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
@@ -3351,7 +3351,7 @@ export default function ResilienceApp() {
                               transition={{ delay: 0.18, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                             >
                               <motion.span
-                                className="flex shrink-0 text-emerald-400 dark:text-emerald-400/90"
+                                className="flex shrink-0 text-emerald-700 dark:text-emerald-400"
                                 aria-hidden
                                 initial={{ opacity: 0, scale: 0.82, rotate: -14 }}
                                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
