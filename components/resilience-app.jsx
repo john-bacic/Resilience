@@ -298,13 +298,13 @@ function dateKeyYearsAgo(years) {
 
 function diarySourceLabel(entry) {
   const s = entry.source;
-  if (s === "reflection") return "Reflection";
-  if (s === "log") return "Log what happened?";
+  if (s === "reflection") return "Rehearsal Reflection";
+  if (s === "log") return "Log: What happened";
   if (s === "morning" || s === "morning_reflection") return "Morning";
   const title = String(entry.title || "");
   if (/^morning reflection:/i.test(title)) return "Morning";
-  if (entry.moodBefore != null && entry.moodAfter != null) return "Log what happened?";
-  return "Reflection";
+  if (entry.moodBefore != null && entry.moodAfter != null) return "Log: What happened";
+  return "Rehearsal Reflection";
 }
 
 function diaryTitleDisplay(entry) {
@@ -335,7 +335,7 @@ function diaryTitleDisplay(entry) {
   return t || "Untitled entry";
 }
 
-/** Log-style diary rows ("Log what happened?" / legacy raw-text saves). */
+/** Log-style diary rows ("Log: What happened" / legacy raw-text saves). */
 function isDiaryLogEntry(entry) {
   if (!entry || typeof entry !== "object") return false;
   if (entry.source === "log") return true;
@@ -3336,10 +3336,10 @@ export default function ResilienceApp() {
                           </p>
                           {reduceMotion ? (
                             <div className="mt-1.5 flex items-center gap-2">
-                              <span className="flex shrink-0 text-emerald-400 dark:text-emerald-400" aria-hidden>
+                              <span className="flex shrink-0 text-emerald-400 dark:text-emerald-400/90" aria-hidden>
                                 <Sparkles className="h-4 w-4" strokeWidth={2} />
                               </span>
-                              <p className="text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-400 dark:text-emerald-400/90">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
                                 Today&apos;s rehearsal
                               </p>
                             </div>
@@ -3351,7 +3351,7 @@ export default function ResilienceApp() {
                               transition={{ delay: 0.18, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                             >
                               <motion.span
-                                className="flex shrink-0 text-emerald-400 dark:text-emerald-400"
+                                className="flex shrink-0 text-emerald-400 dark:text-emerald-400/90"
                                 aria-hidden
                                 initial={{ opacity: 0, scale: 0.82, rotate: -14 }}
                                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
@@ -3359,7 +3359,7 @@ export default function ResilienceApp() {
                               >
                                 <Sparkles className="h-4 w-4" strokeWidth={2} />
                               </motion.span>
-                              <p className="text-[10px] font-medium uppercase tracking-[0.32em] text-emerald-400 dark:text-emerald-400/90">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
                                 Today&apos;s rehearsal
                               </p>
                             </motion.div>
@@ -3416,7 +3416,7 @@ export default function ResilienceApp() {
                 <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
                   <Card>
                     <CardHeader>
-                      <SectionTitle icon={NotebookPen} title="Log what happened" subtitle="Write it and get guided." />
+                      <SectionTitle icon={NotebookPen} title="Log: What happened" subtitle="Write it and get guided." />
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">

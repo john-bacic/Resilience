@@ -605,7 +605,7 @@ export default function ResilienceMVPApp() {
                   <CardHeader>
                     <SectionTitle
                       icon={NotebookPen}
-                      title="Log what happened"
+                      title="Log: What happened"
                       subtitle="Write it in your own words. The app will guide you."
                     />
                   </CardHeader>
