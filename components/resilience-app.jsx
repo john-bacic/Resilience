@@ -1529,6 +1529,7 @@ export default function ResilienceApp() {
   const [selectedProgressDate, setSelectedProgressDate] = useState(null);
   const [progressCalendarNavFeedback, setProgressCalendarNavFeedback] = useState(null);
   const progressCalendarNavFeedbackTimerRef = useRef(null);
+  const progressCalendarSwipeStartXRef = useRef(null);
   const [progressCalendarViewDate, setProgressCalendarViewDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -3150,6 +3151,18 @@ export default function ResilienceApp() {
     setProgressCalendarViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + monthDelta, 1));
   }
 
+  function handleProgressCalendarSwipeStart(clientX) {
+    progressCalendarSwipeStartXRef.current = clientX;
+  }
+
+  function handleProgressCalendarSwipeEnd(clientX) {
+    if (progressCalendarSwipeStartXRef.current == null) return;
+    const deltaX = clientX - progressCalendarSwipeStartXRef.current;
+    progressCalendarSwipeStartXRef.current = null;
+    if (Math.abs(deltaX) < 40) return;
+    shiftProgressCalendarMonth(deltaX < 0 ? 1 : -1);
+  }
+
   return (
     <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-slate-100 px-4 pb-4 pt-2 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 md:px-8 md:pb-8 md:pt-3">
       <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
@@ -3675,51 +3688,33 @@ export default function ResilienceApp() {
                       </div>
                       <Progress value={completionPercent} />
                       <div className="space-y-2 pt-2">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="relative flex items-center justify-center gap-2">
                           <p className="text-sm uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                             {calendarMonthLabel}
                           </p>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={`h-8 gap-1.5 px-2.5 active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 ${
-                                progressCalendarNavFeedback === "prev"
-                                  ? "ring-2 ring-emerald-400/70 dark:ring-emerald-500/70"
-                                  : ""
-                              }`}
-                              onClick={() => shiftProgressCalendarMonth(-1)}
-                              aria-label="Show previous month"
-                            >
-                              <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
-                              <span className="text-xs font-medium">Prev</span>
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className={`h-8 gap-1.5 px-2.5 active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 ${
-                                progressCalendarNavFeedback === "next"
-                                  ? "ring-2 ring-emerald-400/70 dark:ring-emerald-500/70"
-                                  : ""
-                              }`}
-                              onClick={() => shiftProgressCalendarMonth(1)}
-                              aria-label="Show next month"
-                            >
-                              <span className="text-xs font-medium">Next</span>
-                              <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
-                            </Button>
-                          </div>
                           {selectedProgressDate && (
                             <button
                               type="button"
                               onClick={() => setSelectedProgressDate(null)}
-                              className="text-xs text-slate-600 underline dark:text-slate-300"
+                              className="absolute right-0 text-xs text-slate-600 underline dark:text-slate-300"
                             >
                               Show all dates
                             </button>
                           )}
                         </div>
-                        <div className="grid grid-cols-7 gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
+                        <div
+                          className="grid grid-cols-7 gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800"
+                          onTouchStart={(event) => {
+                            const touch = event.touches[0];
+                            if (!touch) return;
+                            handleProgressCalendarSwipeStart(touch.clientX);
+                          }}
+                          onTouchEnd={(event) => {
+                            const touch = event.changedTouches[0];
+                            if (!touch) return;
+                            handleProgressCalendarSwipeEnd(touch.clientX);
+                          }}
+                        >
                           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((weekday) => (
                             <div
                               key={weekday}
@@ -3790,6 +3785,53 @@ export default function ResilienceApp() {
                               </button>
                             );
                           })}
+                        </div>
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => shiftProgressCalendarMonth(-1)}
+                            aria-label="Show previous month"
+                            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2.4} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => shiftProgressCalendarMonth(-1)}
+                            aria-label="Show previous month"
+                            className="rounded-full p-1"
+                          >
+                            <span
+                              className={`block h-1.5 w-1.5 rounded-full transition ${
+                                progressCalendarNavFeedback === "prev"
+                                  ? "bg-emerald-600 dark:bg-emerald-400"
+                                  : "bg-slate-400 dark:bg-slate-500"
+                              }`}
+                            />
+                          </button>
+                          <span className="h-1.5 w-1.5 rounded-full bg-slate-500 dark:bg-slate-300" aria-hidden />
+                          <button
+                            type="button"
+                            onClick={() => shiftProgressCalendarMonth(1)}
+                            aria-label="Show next month"
+                            className="rounded-full p-1"
+                          >
+                            <span
+                              className={`block h-1.5 w-1.5 rounded-full transition ${
+                                progressCalendarNavFeedback === "next"
+                                  ? "bg-emerald-600 dark:bg-emerald-400"
+                                  : "bg-slate-400 dark:bg-slate-500"
+                              }`}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => shiftProgressCalendarMonth(1)}
+                            aria-label="Show next month"
+                            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                          >
+                            <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.4} />
+                          </button>
                         </div>
                       </div>
                       <p className="text-sm text-slate-700 dark:text-slate-300">Entries: {diaryStats.total}</p>
