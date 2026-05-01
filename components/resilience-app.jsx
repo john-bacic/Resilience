@@ -10,6 +10,7 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -1526,6 +1527,12 @@ export default function ResilienceApp() {
   const [reminderDraft, setReminderDraft] = useState("08:00");
   const [isPrefillingReflection, setIsPrefillingReflection] = useState(false);
   const [selectedProgressDate, setSelectedProgressDate] = useState(null);
+  const [progressCalendarNavFeedback, setProgressCalendarNavFeedback] = useState(null);
+  const progressCalendarNavFeedbackTimerRef = useRef(null);
+  const [progressCalendarViewDate, setProgressCalendarViewDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [isDiaryEditModalOpen, setIsDiaryEditModalOpen] = useState(false);
   /** Title tap opens read-only; Review opens full edit. */
   const [diaryEntryModalViewOnly, setDiaryEntryModalViewOnly] = useState(false);
@@ -3084,15 +3091,12 @@ export default function ResilienceApp() {
 
   const normalizedTone = app.tone === "Balanced" ? "Centered" : app.tone;
   const currentMood = moodOptions.find((option) => option.value === normalizedTone) || moodOptions[1];
-  const calendarNow = useMemo(() => new Date(), []);
-  const calendarYear = calendarNow.getFullYear();
-  const calendarMonth = calendarNow.getMonth();
-  const calendarMonthLabel = calendarNow.toLocaleDateString([], { month: "long", year: "numeric" });
+  const calendarYear = progressCalendarViewDate.getFullYear();
+  const calendarMonth = progressCalendarViewDate.getMonth();
+  const calendarMonthLabel = progressCalendarViewDate.toLocaleDateString([], { month: "long", year: "numeric" });
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
   const firstWeekday = new Date(calendarYear, calendarMonth, 1).getDay();
-  const progressCalendarTodayKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(
-    calendarNow.getDate()
-  ).padStart(2, "0")}`;
+  const progressCalendarTodayKey = toDateKey(new Date());
   const selectedDayLabel = selectedProgressDate
     ? new Date(`${selectedProgressDate}T00:00:00`).toLocaleDateString([], {
         month: "short",
@@ -3131,6 +3135,19 @@ export default function ResilienceApp() {
       }
       return !wasOpen;
     });
+  }
+
+  function shiftProgressCalendarMonth(monthDelta) {
+    const navDirection = monthDelta < 0 ? "prev" : "next";
+    setProgressCalendarNavFeedback(navDirection);
+    if (progressCalendarNavFeedbackTimerRef.current) {
+      clearTimeout(progressCalendarNavFeedbackTimerRef.current);
+    }
+    progressCalendarNavFeedbackTimerRef.current = setTimeout(() => {
+      setProgressCalendarNavFeedback(null);
+      progressCalendarNavFeedbackTimerRef.current = null;
+    }, 220);
+    setProgressCalendarViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + monthDelta, 1));
   }
 
   return (
@@ -3658,10 +3675,40 @@ export default function ResilienceApp() {
                       </div>
                       <Progress value={completionPercent} />
                       <div className="space-y-2 pt-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                             {calendarMonthLabel}
                           </p>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={`h-8 gap-1.5 px-2.5 active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 ${
+                                progressCalendarNavFeedback === "prev"
+                                  ? "ring-2 ring-emerald-400/70 dark:ring-emerald-500/70"
+                                  : ""
+                              }`}
+                              onClick={() => shiftProgressCalendarMonth(-1)}
+                              aria-label="Show previous month"
+                            >
+                              <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
+                              <span className="text-xs font-medium">Prev</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={`h-8 gap-1.5 px-2.5 active:scale-95 active:bg-slate-100 dark:active:bg-slate-700 ${
+                                progressCalendarNavFeedback === "next"
+                                  ? "ring-2 ring-emerald-400/70 dark:ring-emerald-500/70"
+                                  : ""
+                              }`}
+                              onClick={() => shiftProgressCalendarMonth(1)}
+                              aria-label="Show next month"
+                            >
+                              <span className="text-xs font-medium">Next</span>
+                              <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+                            </Button>
+                          </div>
                           {selectedProgressDate && (
                             <button
                               type="button"
