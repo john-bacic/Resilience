@@ -12,7 +12,7 @@ const inter = Inter({
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "stoic as phuq",
+  title: "STOIC AF",
   description: "30-day resilience training app",
   manifest: "/manifest.webmanifest"
 };

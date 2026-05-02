@@ -142,13 +142,6 @@ function normalizeSharingApiPayload(data) {
   return { enabled, shareDisplayName, grants, inviteUrl };
 }
 
-function weekFocus(day) {
-  if (day <= 7) return "Facts vs Story";
-  if (day <= 14) return "Control Filter";
-  if (day <= 21) return "Chosen Meaning";
-  return "Resilience";
-}
-
 function scenarioForDay(day) {
   return SCENARIOS[(day - 1) % SCENARIOS.length];
 }
@@ -1929,7 +1922,7 @@ export default function ResilienceApp() {
         const now = new Date();
         if (now.getHours() === targetHour && now.getMinutes() === targetMinute) {
           if (localStorage.getItem(key) === "shown") return;
-          new Notification("stoic as phuq reminder", {
+          new Notification("STOIC AF reminder", {
             body: "Quick check-in: do your morning reflection before the day runs away."
           });
           localStorage.setItem(key, "shown");
@@ -1964,11 +1957,18 @@ export default function ResilienceApp() {
     });
   }, [app.personalProfile]);
 
+  /** Single primitive dep avoids React "dependency array changed size" warnings (e.g. Fast Refresh) while still re-running on session changes. */
+  const clerkAuthSignature = !clerkLoaded
+    ? "loading"
+    : clerkUser?.id
+      ? `user:${clerkUser.id}`
+      : "signed-out";
+
   useEffect(() => {
-    if (!clerkLoaded) return;
+    if (clerkAuthSignature === "loading") return;
 
     /** Signed out: clear UI state and block PUT /api/state so we never overwrite server data with empty defaults. */
-    if (!clerkUser?.id) {
+    if (clerkAuthSignature === "signed-out") {
       initialStateLoadedRef.current = false;
       setInitialStateLoaded(false);
       setApp(normalizeAppState({}));
@@ -2020,7 +2020,7 @@ export default function ResilienceApp() {
       cancelled = true;
       controller.abort();
     };
-  }, [clerkLoaded, clerkUser?.id]);
+  }, [clerkAuthSignature]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2369,17 +2369,6 @@ export default function ResilienceApp() {
     setDiaryInsights(null);
     setDiaryInsightsError(null);
   }, [diaryEntryIdsKey]);
-
-  const weeklySummary = useMemo(() => {
-    const focus = weekFocus(currentProgramDay);
-    const messages = {
-      "Facts vs Story": "You are separating what happened from what your mind adds to it.",
-      "Control Filter": "You are cutting wasted energy on what is outside your control.",
-      "Chosen Meaning": "You are choosing interpretations before emotion chooses for you.",
-      Resilience: "You are building steadiness through repetition, not perfection."
-    };
-    return messages[focus];
-  }, [currentProgramDay]);
 
   function startReflection() {
     setReflectionScenario(todayScenario);
@@ -3188,7 +3177,7 @@ export default function ResilienceApp() {
                     <StoicMarkIcon className="h-[33px] w-[29px]" />
                   </div>
                   <div className="min-w-0">
-                    <CardTitle>stoic as phuq</CardTitle>
+                    <CardTitle>STOIC AF</CardTitle>
                     <CardDescription>30-day resilience</CardDescription>
                   </div>
                 </div>
@@ -3206,6 +3195,19 @@ export default function ResilienceApp() {
               </div>
               {isFocusOpen && (
                 <div ref={focusPanelContentRef}>
+                  <button
+                    type="button"
+                    onClick={() => setUnshakenVideoOpen(true)}
+                    className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-950/25"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/50">
+                      <Play className="h-5 w-5 text-emerald-800 dark:text-emerald-300" fill="currentColor" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Unshaken</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Watch the video</p>
+                    </div>
+                  </button>
                   <div className="mb-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">About you</p>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -3296,34 +3298,14 @@ export default function ResilienceApp() {
                       {profileSavedFeedback ? "Saved" : "Save profile context"}
                     </Button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setUnshakenVideoOpen(true)}
-                    className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-950/25"
+                  <Button
+                    variant="outline"
+                    className="mt-4 w-full justify-start gap-2"
+                    onClick={() => setIsDarkMode((prev) => !prev)}
                   >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/50">
-                      <Play className="h-5 w-5 text-emerald-800 dark:text-emerald-300" fill="currentColor" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Unshaken</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Watch the video</p>
-                    </div>
-                  </button>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Current focus</p>
-                  <>
-                    <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                      {weekFocus(currentProgramDay)}
-                    </p>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{weeklySummary}</p>
-                    <Button
-                      variant="outline"
-                      className="mt-4 w-full justify-start gap-2"
-                      onClick={() => setIsDarkMode((prev) => !prev)}
-                    >
-                      {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                      {isDarkMode ? "Light mode" : "Dark mode"}
-                    </Button>
-                  </>
+                    {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    {isDarkMode ? "Light mode" : "Dark mode"}
+                  </Button>
                 </div>
               )}
             </div>

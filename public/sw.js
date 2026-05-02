@@ -1,7 +1,7 @@
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   const data = event.data.json();
-  const title = data.title || "stoic as phuq";
+  const title = data.title || "STOIC AF";
   const options = {
     body: data.body || "Time for your reflection.",
     data: { url: data.url || "/" }
