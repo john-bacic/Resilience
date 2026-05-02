@@ -1504,7 +1504,7 @@ function DiaryInsightsReveal({ insights, reduceMotion }) {
 }
 
 export default function ResilienceApp() {
-  const { user: clerkUser } = useUser();
+  const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const reduceMotion = useReducedMotion();
   const [app, setApp] = useState(DEFAULT_STATE);
   /** Ref + state: block PUT /api/state until first GET /api/state attempt finishes (avoids racing empty defaults over server diary). */
@@ -1965,9 +1965,24 @@ export default function ResilienceApp() {
   }, [app.personalProfile]);
 
   useEffect(() => {
+    if (!clerkLoaded) return;
+
+    /** Signed out: clear UI state and block PUT /api/state so we never overwrite server data with empty defaults. */
+    if (!clerkUser?.id) {
+      initialStateLoadedRef.current = false;
+      setInitialStateLoaded(false);
+      setApp(normalizeAppState({}));
+      setStatePersistenceWarning(null);
+      return;
+    }
+
     let cancelled = false;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    /** Until GET succeeds, never persist — avoids racing DEFAULT_STATE over real Postgres rows. */
+    initialStateLoadedRef.current = false;
+    setInitialStateLoaded(false);
 
     async function loadState() {
       try {
@@ -1975,9 +1990,9 @@ export default function ResilienceApp() {
         if (cancelled) return;
         if (!response.ok) {
           if (response.status === 401) {
-            console.warn("/api/state: unauthorized — using local default until signed in.");
+            console.warn("/api/state: unauthorized — not enabling persistence until session can load state.");
           } else {
-            console.warn(`/api/state: ${response.status} — using local default.`);
+            console.warn(`/api/state: ${response.status} — not enabling persistence until load succeeds.`);
           }
           return;
         }
@@ -1991,14 +2006,12 @@ export default function ResilienceApp() {
         } else {
           setStatePersistenceWarning(null);
         }
+        initialStateLoadedRef.current = true;
+        setInitialStateLoaded(true);
       } catch (error) {
         if (error?.name !== "AbortError") console.error(error);
       } finally {
         clearTimeout(timeoutId);
-        if (!cancelled) {
-          initialStateLoadedRef.current = true;
-          setInitialStateLoaded(true);
-        }
       }
     }
 
@@ -2007,7 +2020,7 @@ export default function ResilienceApp() {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [clerkLoaded, clerkUser?.id]);
 
   useEffect(() => {
     let cancelled = false;
