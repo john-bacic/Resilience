@@ -2054,6 +2054,15 @@ export default function ResilienceApp() {
     [app.diary, app.startDate]
   );
   const currentProgramDay = useMemo(() => programDayFromStart(programAnchorKey), [programAnchorKey]);
+
+  /** Avoid flashing "Day 1 of 30" before server state hydrates (signed-in only). */
+  const homeHeroDayTitle = useMemo(() => {
+    if (clerkAuthSignature === "loading") return "Day";
+    if (clerkAuthSignature === "signed-out") return `Day ${currentProgramDay} of 30`;
+    if (!initialStateLoaded) return "Day";
+    return `Day ${currentProgramDay} of 30`;
+  }, [clerkAuthSignature, initialStateLoaded, currentProgramDay]);
+
   const logEntryPreviewStart = useMemo(
     () =>
       programAnchorKey
@@ -3332,7 +3341,7 @@ export default function ResilienceApp() {
                   <CardHeader>
                     <SectionTitle
                       icon={Sparkles}
-                      title={`Day ${currentProgramDay} of 30`}
+                      title={homeHeroDayTitle}
                       subtitle="Train yourself to respond, not react."
                     />
                   </CardHeader>
