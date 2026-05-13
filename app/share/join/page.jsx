@@ -3,56 +3,54 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 function JoinInviteContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("t");
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
+  const { isLoaded: clerkLoaded, userId } = useAuth();
+  const acceptInvite = useMutation(api.sharing.acceptInvite);
 
   useEffect(() => {
+    if (!clerkLoaded) return undefined;
     if (!token?.trim()) {
       setStatus("error");
       setMessage("This invite link is missing a token. Ask the person who shared for a current link or QR code.");
+      return undefined;
+    }
+    if (!userId) {
+      setStatus("auth");
+      setMessage("Sign in (or create an account) with the email you use for this app, then open this link again.");
       return undefined;
     }
 
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetch("/api/me/sharing/accept-invite", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: token.trim() })
-        });
-        const data = await response.json().catch(() => ({}));
+        const data = await acceptInvite({ token: token.trim() });
         if (cancelled) return;
-        if (response.ok) {
-          setStatus("ok");
-          setMessage(
-            typeof data?.label === "string" && data.label
-              ? `You can open ${data.label}'s diary from Shared diaries below.`
-              : "You now have access. Open Shared diaries on the home page to view their diary."
-          );
-        } else if (response.status === 401) {
-          setStatus("auth");
-          setMessage("Sign in (or create an account) with the email you use for this app, then open this link again.");
-        } else {
-          setStatus("error");
-          setMessage(typeof data?.error === "string" ? data.error : "Could not accept this invite.");
-        }
-      } catch {
-        if (!cancelled) {
-          setStatus("error");
-          setMessage("Something went wrong. Try again.");
-        }
+        setStatus("ok");
+        setMessage(
+          typeof data?.label === "string" && data.label
+            ? `You can open ${data.label}'s diary from Shared diaries below.`
+            : "You now have access. Open Shared diaries on the home page to view their diary."
+        );
+      } catch (error) {
+        if (cancelled) return;
+        const msg = error instanceof Error ? error.message : "Could not accept this invite.";
+        setStatus("error");
+        setMessage(msg);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, clerkLoaded, userId, acceptInvite]);
 
   return (
     <div className="mx-auto flex min-h-[50vh] max-w-md flex-col justify-center px-6 py-12 text-center">

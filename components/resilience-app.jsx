@@ -1,6 +1,8 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -95,6 +97,61 @@ function getRandomId() {
     return crypto.randomUUID();
   }
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Pick only fields Convex's strict validators accept, so legacy/unknown
+ * fields from Postgres-saved state don't break the dual-write mutation.
+ * Drop silently — Postgres remains source of truth during Phase 2.
+ */
+function pickStateForConvex(state) {
+  if (!state || typeof state !== "object") return null;
+  const profile = state.personalProfile || {};
+  const profileFields = ["age", "birthday", "maritalStatus", "children", "dog", "partner", "job", "friends", "notes"];
+  const diaryFields = [
+    "id", "day", "loggedDateKey", "title", "rawText", "scenario", "source",
+    "triggeredSteps", "fact", "story", "outsideControl", "insideControl",
+    "chosenResponse", "lesson", "moodBefore", "moodAfter", "createdAt"
+  ];
+  const reflectionFields = [
+    "id", "day", "scenario", "reaction", "facts", "story",
+    "outsideControl", "insideControl", "chosenResponse", "intention", "createdAt"
+  ];
+  const intentionFields = ["id", "text", "day"];
+  const pickWhitelisted = (obj, fields) => {
+    if (!obj || typeof obj !== "object") return {};
+    const out = {};
+    for (const f of fields) {
+      if (obj[f] !== undefined) out[f] = obj[f];
+    }
+    return out;
+  };
+  return {
+    startDate: state.startDate ?? null,
+    reminderTime: typeof state.reminderTime === "string" ? state.reminderTime : "8:00 AM",
+    tone: typeof state.tone === "string" ? state.tone : "Balanced",
+    lastCompletedDay: Number(state.lastCompletedDay) || 0,
+    streak: Number(state.streak) || 0,
+    scenarioHistory: Array.isArray(state.scenarioHistory)
+      ? state.scenarioHistory.filter((s) => typeof s === "string")
+      : [],
+    personalProfile: pickWhitelisted(profile, profileFields),
+    diary: Array.isArray(state.diary)
+      ? state.diary
+          .filter((d) => d && typeof d === "object" && typeof d.id === "string")
+          .map((d) => pickWhitelisted(d, diaryFields))
+      : [],
+    reflections: Array.isArray(state.reflections)
+      ? state.reflections
+          .filter((r) => r && typeof r === "object" && typeof r.id === "string")
+          .map((r) => pickWhitelisted(r, reflectionFields))
+      : [],
+    intentions: Array.isArray(state.intentions)
+      ? state.intentions
+          .filter((i) => i && typeof i === "object" && typeof i.id === "string" && typeof i.text === "string")
+          .map((i) => pickWhitelisted(i, intentionFields))
+      : []
+  };
 }
 
 function normalizeAppState(raw) {
@@ -1547,7 +1604,11 @@ export default function ResilienceApp() {
   const [latestCommitUrl, setLatestCommitUrl] = useState("");
   /** null = unknown / loading; true = ANTHROPIC_API_KEY present on server; false = missing or fetch failed */
   const [anthropicApiOk, setAnthropicApiOk] = useState(null);
-  /** SET from GET /api/state: no Postgres env, or DB error (degraded) — progress may not match what you expect */
+  /**
+   * Legacy: previously surfaced Postgres degradation. Convex is the
+   * source of truth now; left as a noop state for follow-up Convex
+   * health surfacing if we ever want it.
+   */
   const [statePersistenceWarning, setStatePersistenceWarning] = useState(null);
   const [isClient, setIsClient] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState("default");
@@ -1773,19 +1834,43 @@ export default function ResilienceApp() {
     }
   }
 
+  /** Phase 4: Convex is the source of truth — no more Postgres writes for state. */
+  const replaceFromStateMutation = useMutation(api.state.replaceFromState);
+  const pushSubscribeMutation = useMutation(api.push.subscribe);
+  const pushUnsubscribeMutation = useMutation(api.push.unsubscribe);
+  /** Phase 4b: sharing/social cutover. Convex client used for one-shot reads. */
+  const convex = useConvex();
+  const updateSharingMutation = useMutation(api.sharing.updateSettings);
+  const rotateInviteMutation = useMutation(api.sharing.rotateInvite);
+  const grantViewerMutation = useMutation(api.sharing.grantViewer);
+  const revokeGrantMutation = useMutation(api.sharing.revokeGrant);
+  const grantViewerByEmailAction = useAction(api.sharing.grantViewerByEmail);
+  const acceptInviteMutation = useMutation(api.sharing.acceptInvite);
+  const toggleLikeMutation = useMutation(api.social.toggleLike);
+  const addCommentMutation = useMutation(api.social.addComment);
+  const deleteCommentMutation = useMutation(api.social.deleteComment);
+
+  /** Gate the Convex queries on Clerk session ready + authed.
+   *  Inline so we don't depend on `clerkAuthSignature` defined further down. */
+  const isSignedIn = Boolean(clerkLoaded && clerkUser?.id);
+  const sharingAppOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
+  const sharingSettingsQuery = useQuery(
+    api.sharing.getSettings,
+    isSignedIn ? { appOrigin: sharingAppOrigin } : "skip"
+  );
+  const sharedDiariesQuery = useQuery(api.sharing.listSharedDiaries, isSignedIn ? {} : "skip");
+  const ownerReactionsSummaryQuery = useQuery(api.social.ownerReactionsSummary, isSignedIn ? {} : "skip");
+
   async function persistState(nextState) {
     if (!initialStateLoadedRef.current) return;
     try {
       setSaving(true);
-      const response = await fetch("/api/state", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: nextState })
-      });
-      if (!response.ok) throw new Error("Failed to save");
+      const convexPayload = pickStateForConvex(nextState);
+      if (!convexPayload) return;
+      await replaceFromStateMutation({ state: convexPayload });
       void refreshVersionInfo();
     } catch (error) {
-      console.error(error);
+      console.error("persistState failed:", error);
     } finally {
       setSaving(false);
     }
@@ -1811,11 +1896,7 @@ export default function ResilienceApp() {
       const existingSubscription = await registration.pushManager.getSubscription();
       setIsPushEnabled(Boolean(existingSubscription));
       if (existingSubscription) {
-        await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subscription: existingSubscription.toJSON() })
-        });
+        await pushSubscribeMutation({ subscription: existingSubscription.toJSON() });
       }
     } catch (error) {
       console.error("syncPushSubscription failed", error);
@@ -1845,11 +1926,7 @@ export default function ResilienceApp() {
           applicationServerKey: base64UrlToUint8Array(publicKey)
         }));
 
-      await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: subscription.toJSON() })
-      });
+      await pushSubscribeMutation({ subscription: subscription.toJSON() });
 
       setIsPushEnabled(true);
     } catch (error) {
@@ -1869,11 +1946,7 @@ export default function ResilienceApp() {
       }
       const endpoint = subscription.endpoint;
       await subscription.unsubscribe();
-      await fetch("/api/push/subscribe", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint })
-      });
+      await pushUnsubscribeMutation({ endpoint });
       setIsPushEnabled(false);
     } catch (error) {
       console.error("disablePushNotifications failed", error);
@@ -1964,10 +2037,22 @@ export default function ResilienceApp() {
       ? `user:${clerkUser.id}`
       : "signed-out";
 
+  /**
+   * Phase 4: Convex is the source of truth for state. Gated on `isSignedIn`
+   * (Clerk fully loaded + user present) so we don't prematurely fire
+   * unauthenticated → see `null` → hydrate with empty defaults.
+   *
+   * Returns:
+   *   - undefined  query skipped or still in flight
+   *   - null       authed but no row yet for this user (genuine first-run)
+   *   - object     hydrated state
+   */
+  const convexCurrentState = useQuery(api.state.getCurrent, isSignedIn ? {} : "skip");
+
   useEffect(() => {
     if (clerkAuthSignature === "loading") return;
 
-    /** Signed out: clear UI state and block PUT /api/state so we never overwrite server data with empty defaults. */
+    /** Signed out: clear UI state and block writes. */
     if (clerkAuthSignature === "signed-out") {
       initialStateLoadedRef.current = false;
       setInitialStateLoaded(false);
@@ -1976,77 +2061,30 @@ export default function ResilienceApp() {
       return;
     }
 
-    let cancelled = false;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    if (initialStateLoadedRef.current) return; // hydrate once per session
+    if (convexCurrentState === undefined) return; // still loading (skip or in flight)
 
-    /** Until GET succeeds, never persist — avoids racing DEFAULT_STATE over real Postgres rows. */
-    initialStateLoadedRef.current = false;
-    setInitialStateLoaded(false);
+    /** authed + query returned: null = new user, object = real state. */
+    setApp(normalizeAppState(convexCurrentState ?? {}));
+    setStatePersistenceWarning(null);
+    initialStateLoadedRef.current = true;
+    setInitialStateLoaded(true);
+  }, [clerkAuthSignature, convexCurrentState]);
 
-    async function loadState() {
-      try {
-        const response = await fetch("/api/state", { cache: "no-store", signal: controller.signal });
-        if (cancelled) return;
-        if (!response.ok) {
-          if (response.status === 401) {
-            console.warn("/api/state: unauthorized — not enabling persistence until session can load state.");
-          } else {
-            console.warn(`/api/state: ${response.status} — not enabling persistence until load succeeds.`);
-          }
-          return;
-        }
-        const payload = await response.json();
-        if (cancelled) return;
-        setApp(normalizeAppState(payload?.state));
-        if (payload?.degraded) {
-          setStatePersistenceWarning("degraded");
-        } else if (payload?.source === "memory") {
-          setStatePersistenceWarning("memory");
-        } else {
-          setStatePersistenceWarning(null);
-        }
-        initialStateLoadedRef.current = true;
-        setInitialStateLoaded(true);
-      } catch (error) {
-        if (error?.name !== "AbortError") console.error(error);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    }
-
-    void loadState();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [clerkAuthSignature]);
-
+  /** Phase 4b: shared diaries list is now reactive via Convex. */
   useEffect(() => {
-    let cancelled = false;
-    async function loadSharedList() {
-      try {
-        const response = await fetch("/api/shared-diaries", { cache: "no-store" });
-        if (cancelled) return;
-        if (response.status === 503) {
-          setSharedDiariesUnavailable(true);
-          setSharedDiariesItems([]);
-          return;
-        }
-        if (!response.ok) return;
-        const data = await response.json();
-        if (cancelled) return;
-        setSharedDiariesUnavailable(false);
-        setSharedDiariesItems(Array.isArray(data?.items) ? data.items : []);
-      } catch {
-        if (!cancelled) setSharedDiariesItems([]);
-      }
+    if (sharedDiariesQuery === undefined) return;
+    setSharedDiariesUnavailable(false);
+    setSharedDiariesItems(Array.isArray(sharedDiariesQuery?.items) ? sharedDiariesQuery.items : []);
+  }, [sharedDiariesQuery]);
+
+  /** Phase 4b: own sharing settings stay in sync with the Convex query. */
+  useEffect(() => {
+    if (sharingSettingsQuery === undefined) return;
+    if (sharingSettingsQuery) {
+      setSharingSettings(normalizeSharingApiPayload(sharingSettingsQuery));
     }
-    void loadSharedList();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [sharingSettingsQuery]);
 
   const todayDateKey = toDateKey(new Date());
   const programAnchorKey = useMemo(
@@ -2092,27 +2130,25 @@ export default function ResilienceApp() {
     [app.diary]
   );
 
+  /**
+   * Phase 4b: kept as a no-op `useCallback` so existing call sites compile.
+   * Real data flows via `ownerReactionsSummaryQuery` + the effect below.
+   */
   const loadDiaryEntryReactionsSummary = useCallback(async () => {
-    try {
-      const res = await fetch("/api/me/sharing/reactions", { cache: "no-store" });
-      if (res.status === 503) {
-        setDiaryEntryReactionsSummary({});
-        return;
-      }
-      if (!res.ok) return;
-      const data = await res.json();
-      const map = {};
-      for (const row of data.entries || []) {
-        map[row.entryId] = {
-          likeCount: row.likeCount ?? 0,
-          commentCount: row.commentCount ?? 0
-        };
-      }
-      setDiaryEntryReactionsSummary(map);
-    } catch {
-      setDiaryEntryReactionsSummary({});
-    }
+    // intentionally empty — query is reactive
   }, []);
+
+  useEffect(() => {
+    if (ownerReactionsSummaryQuery === undefined) return;
+    const map = {};
+    for (const row of ownerReactionsSummaryQuery?.entries || []) {
+      map[row.entryId] = {
+        likeCount: row.likeCount ?? 0,
+        commentCount: row.commentCount ?? 0
+      };
+    }
+    setDiaryEntryReactionsSummary(map);
+  }, [ownerReactionsSummaryQuery]);
 
   /** Log tab: entries for the same calendar day as the "When did this happen?" picker (not always today). */
   const diaryEntriesForSelectedLogDate = useMemo(
@@ -2600,50 +2636,65 @@ export default function ResilienceApp() {
     setIsDiaryEditModalOpen(true);
   }
 
+  /**
+   * Phase 4b: settings are now driven by `useQuery(api.sharing.getSettings)`.
+   * This kept-as-function loader still exists for compatibility with the
+   * places that previously imperatively called it (e.g. before opening the
+   * share modal). It just nudges the query / clears error state.
+   */
   async function loadSharingSettings() {
     setSharingLoadError(null);
-    try {
-      const response = await fetch("/api/me/sharing", { cache: "no-store" });
-      if (response.status === 503) {
-        setSharingLoadError("Sharing requires a database (POSTGRES_URL / DATABASE_URL).");
-        setSharingSettings(null);
-        return;
-      }
-      if (!response.ok) {
-        setSharingLoadError("Could not load sharing settings.");
-        return;
-      }
-      const data = await response.json();
-      setSharingSettings(normalizeSharingApiPayload(data));
-    } catch {
-      setSharingLoadError("Could not load sharing settings.");
+    if (sharingSettingsQuery !== undefined) {
+      setSharingSettings(normalizeSharingApiPayload(sharingSettingsQuery));
     }
   }
 
+  /**
+   * Dispatcher for the various legacy PATCH /api/me/sharing bodies. Each
+   * shape now routes to the matching Convex mutation/action.
+   */
   async function applySharingPatch(body) {
     setSharingBusy(true);
     setSharingLoadError(null);
     try {
-      const response = await fetch("/api/me/sharing", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      if (response.status === 503) {
-        setSharingLoadError("Sharing requires a database (POSTGRES_URL / DATABASE_URL).");
+      let result = null;
+      if (body?.rotateInviteToken === true) {
+        result = await rotateInviteMutation({ appOrigin: sharingAppOrigin });
+      } else if (typeof body?.grantEmail === "string" && body.grantEmail.trim()) {
+        const out = await grantViewerByEmailAction({
+          email: body.grantEmail.trim(),
+          appOrigin: sharingAppOrigin
+        });
+        if (out && typeof out === "object" && "error" in out && out.error) {
+          setSharingLoadError(out.error);
+          return;
+        }
+        result = out;
+      } else if (typeof body?.grantUserId === "string" && body.grantUserId.trim()) {
+        result = await grantViewerMutation({
+          viewerClerkUserId: body.grantUserId.trim(),
+          appOrigin: sharingAppOrigin
+        });
+      } else if (typeof body?.revokeUserId === "string" && body.revokeUserId.trim()) {
+        result = await revokeGrantMutation({
+          viewerClerkUserId: body.revokeUserId.trim(),
+          appOrigin: sharingAppOrigin
+        });
+      } else if (body?.enabled !== undefined || body?.shareDisplayName !== undefined) {
+        result = await updateSharingMutation({
+          enabled: body?.enabled,
+          shareDisplayName: body?.shareDisplayName,
+          appOrigin: sharingAppOrigin
+        });
+      } else {
         return;
       }
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        setSharingLoadError(typeof err?.error === "string" ? err.error : "Update failed.");
-        return;
-      }
-      const data = await response.json();
-      setSharingSettings(normalizeSharingApiPayload(data));
+      if (result) setSharingSettings(normalizeSharingApiPayload(result));
       setGrantEmailInput("");
       setGrantAdvancedUserIdInput("");
-    } catch {
-      setSharingLoadError("Update failed.");
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Update failed.";
+      setSharingLoadError(msg);
     } finally {
       setSharingBusy(false);
     }
@@ -2679,17 +2730,14 @@ export default function ResilienceApp() {
       entries.map(async (e) => {
         if (!e?.id) return;
         try {
-          const res = await fetch(
-            `/api/shared-diaries/${encodeURIComponent(ownerId)}/entries/${encodeURIComponent(e.id)}/reactions`,
-            { cache: "no-store" }
-          );
-          if (res.ok) {
-            const d = await res.json();
-            next[e.id] = {
-              likeCount: d.likeCount ?? 0,
-              commentCount: Array.isArray(d.comments) ? d.comments.length : 0
-            };
-          }
+          const d = await convex.query(api.social.getEntryReactionsForViewer, {
+            ownerClerkUserId: ownerId,
+            entryId: e.id
+          });
+          next[e.id] = {
+            likeCount: d?.likeCount ?? 0,
+            commentCount: Array.isArray(d?.comments) ? d.comments.length : 0
+          };
         } catch {
           /* ignore */
         }
@@ -2708,26 +2756,15 @@ export default function ResilienceApp() {
     setSharedEntryReactionCounts({});
     closeSharedEntryViewer();
     try {
-      const response = await fetch(`/api/shared-diaries/${encodeURIComponent(ownerId)}`, { cache: "no-store" });
-      if (response.status === 403) {
-        setSharedDiaryError("You do not have access to this diary.");
-        return;
-      }
-      if (response.status === 503) {
-        setSharedDiaryError("Sharing requires a database.");
-        return;
-      }
-      if (!response.ok) {
-        setSharedDiaryError("Could not load this diary.");
-        return;
-      }
-      const data = await response.json();
+      const data = await convex.query(api.sharing.getSharedDiary, { ownerClerkUserId: ownerId });
       const rawDiary = Array.isArray(data?.diary) ? data.diary : [];
       const normalized = normalizeAppState({ diary: rawDiary }).diary;
       setSharedDiaryEntries(normalized);
       void refreshSharedReactionCounts(ownerId, normalized);
-    } catch {
-      setSharedDiaryError("Could not load this diary.");
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
+      if (msg.includes("Forbidden")) setSharedDiaryError("You do not have access to this diary.");
+      else setSharedDiaryError("Could not load this diary.");
     } finally {
       setSharedDiaryLoading(false);
     }
@@ -2746,17 +2783,13 @@ export default function ResilienceApp() {
     async function load() {
       setSharedReactionsBusy(true);
       try {
-        const res = await fetch(
-          `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
-          { cache: "no-store" }
-        );
-        if (!cancelled) {
-          if (res.ok) {
-            setSharedEntryReactionsDetail(await res.json());
-          } else {
-            setSharedEntryReactionsDetail(null);
-          }
-        }
+        const data = await convex.query(api.social.getEntryReactionsForViewer, {
+          ownerClerkUserId: sharedDiaryOwnerId,
+          entryId: sharedViewingEntry.id
+        });
+        if (!cancelled) setSharedEntryReactionsDetail(data ?? null);
+      } catch {
+        if (!cancelled) setSharedEntryReactionsDetail(null);
       } finally {
         if (!cancelled) setSharedReactionsBusy(false);
       }
@@ -2765,7 +2798,7 @@ export default function ResilienceApp() {
     return () => {
       cancelled = true;
     };
-  }, [sharedEntryViewOpen, sharedViewingEntry?.id, sharedDiaryOwnerId]);
+  }, [sharedEntryViewOpen, sharedViewingEntry?.id, sharedDiaryOwnerId, convex]);
 
   useEffect(() => {
     if (!isDiaryEditModalOpen || !editingDiaryId) {
@@ -2773,8 +2806,8 @@ export default function ResilienceApp() {
     }
     let cancelled = false;
     setOwnerReactionsLoading(true);
-    fetch(`/api/me/sharing/reactions?entryId=${encodeURIComponent(editingDiaryId)}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+    convex
+      .query(api.social.ownerReactionsForEntry, { entryId: editingDiaryId })
       .then((data) => {
         if (!cancelled && data) setOwnerEntryReactions(data);
       })
@@ -2787,7 +2820,7 @@ export default function ResilienceApp() {
     return () => {
       cancelled = true;
     };
-  }, [isDiaryEditModalOpen, editingDiaryId]);
+  }, [isDiaryEditModalOpen, editingDiaryId, convex]);
 
   useEffect(() => {
     if (tab !== "log" && tab !== "progress") {
@@ -2808,25 +2841,20 @@ export default function ResilienceApp() {
     if (!sharedDiaryOwnerId || !sharedViewingEntry?.id) return;
     setSharedReactionsBusy(true);
     try {
-      const res = await fetch(
-        `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "toggleLike" })
+      const data = await toggleLikeMutation({
+        ownerClerkUserId: sharedDiaryOwnerId,
+        entryId: sharedViewingEntry.id
+      });
+      setSharedEntryReactionsDetail(data);
+      setSharedEntryReactionCounts((prev) => ({
+        ...prev,
+        [sharedViewingEntry.id]: {
+          likeCount: data.likeCount ?? 0,
+          commentCount: Array.isArray(data.comments) ? data.comments.length : 0
         }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setSharedEntryReactionsDetail(data);
-        setSharedEntryReactionCounts((prev) => ({
-          ...prev,
-          [sharedViewingEntry.id]: {
-            likeCount: data.likeCount ?? 0,
-            commentCount: Array.isArray(data.comments) ? data.comments.length : 0
-          }
-        }));
-      }
+      }));
+    } catch (error) {
+      console.error("toggleLike failed:", error);
     } finally {
       setSharedReactionsBusy(false);
     }
@@ -2837,26 +2865,22 @@ export default function ResilienceApp() {
     if (!sharedDiaryOwnerId || !sharedViewingEntry?.id || !text) return;
     setSharedReactionsBusy(true);
     try {
-      const res = await fetch(
-        `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "comment", body: text })
+      const data = await addCommentMutation({
+        ownerClerkUserId: sharedDiaryOwnerId,
+        entryId: sharedViewingEntry.id,
+        body: text
+      });
+      setSharedEntryReactionsDetail(data);
+      setSharedCommentDraft("");
+      setSharedEntryReactionCounts((prev) => ({
+        ...prev,
+        [sharedViewingEntry.id]: {
+          likeCount: data.likeCount ?? 0,
+          commentCount: Array.isArray(data.comments) ? data.comments.length : 0
         }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setSharedEntryReactionsDetail(data);
-        setSharedCommentDraft("");
-        setSharedEntryReactionCounts((prev) => ({
-          ...prev,
-          [sharedViewingEntry.id]: {
-            likeCount: data.likeCount ?? 0,
-            commentCount: Array.isArray(data.comments) ? data.comments.length : 0
-          }
-        }));
-      }
+      }));
+    } catch (error) {
+      console.error("addComment failed:", error);
     } finally {
       setSharedReactionsBusy(false);
     }
@@ -2866,27 +2890,27 @@ export default function ResilienceApp() {
     if (!sharedDiaryOwnerId || !sharedViewingEntry?.id || !commentId) return;
     setSharedReactionsBusy(true);
     try {
-      const res = await fetch(
-        `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/comments/${encodeURIComponent(commentId)}`,
-        { method: "DELETE" }
-      );
-      if (res.ok) {
-        const detailRes = await fetch(
-          `/api/shared-diaries/${encodeURIComponent(sharedDiaryOwnerId)}/entries/${encodeURIComponent(sharedViewingEntry.id)}/reactions`,
-          { cache: "no-store" }
-        );
-        if (detailRes.ok) {
-          const data = await detailRes.json();
-          setSharedEntryReactionsDetail(data);
-          setSharedEntryReactionCounts((prev) => ({
-            ...prev,
-            [sharedViewingEntry.id]: {
-              likeCount: data.likeCount ?? 0,
-              commentCount: Array.isArray(data.comments) ? data.comments.length : 0
-            }
-          }));
-        }
+      await deleteCommentMutation({
+        ownerClerkUserId: sharedDiaryOwnerId,
+        entryId: sharedViewingEntry.id,
+        commentId
+      });
+      const data = await convex.query(api.social.getEntryReactionsForViewer, {
+        ownerClerkUserId: sharedDiaryOwnerId,
+        entryId: sharedViewingEntry.id
+      });
+      if (data) {
+        setSharedEntryReactionsDetail(data);
+        setSharedEntryReactionCounts((prev) => ({
+          ...prev,
+          [sharedViewingEntry.id]: {
+            likeCount: data.likeCount ?? 0,
+            commentCount: Array.isArray(data.comments) ? data.comments.length : 0
+          }
+        }));
       }
+    } catch (error) {
+      console.error("deleteSharedComment failed:", error);
     } finally {
       setSharedReactionsBusy(false);
     }
@@ -2896,20 +2920,17 @@ export default function ResilienceApp() {
     if (!clerkUser?.id || !editingDiaryId || !commentId) return;
     setOwnerReactionsLoading(true);
     try {
-      const res = await fetch(
-        `/api/shared-diaries/${encodeURIComponent(clerkUser.id)}/entries/${encodeURIComponent(editingDiaryId)}/comments/${encodeURIComponent(commentId)}`,
-        { method: "DELETE" }
-      );
-      if (res.ok) {
-        const detailRes = await fetch(
-          `/api/me/sharing/reactions?entryId=${encodeURIComponent(editingDiaryId)}`,
-          { cache: "no-store" }
-        );
-        if (detailRes.ok) {
-          setOwnerEntryReactions(await detailRes.json());
-        }
-        void loadDiaryEntryReactionsSummary();
-      }
+      await deleteCommentMutation({
+        ownerClerkUserId: clerkUser.id,
+        entryId: editingDiaryId,
+        commentId
+      });
+      const data = await convex.query(api.social.ownerReactionsForEntry, {
+        entryId: editingDiaryId
+      });
+      if (data) setOwnerEntryReactions(data);
+    } catch (error) {
+      console.error("deleteOwnerComment failed:", error);
     } finally {
       setOwnerReactionsLoading(false);
     }
@@ -4201,21 +4222,6 @@ export default function ResilienceApp() {
         )}
       </div>
       <div className="mx-auto mt-2 max-w-7xl px-3 text-center text-xs text-slate-400 dark:text-slate-500">
-        {statePersistenceWarning === "degraded" && (
-          <p className="mb-3 max-w-xl mx-auto rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2 text-left text-[13px] leading-snug text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
-            <strong className="font-semibold">Database unreachable.</strong> The app loaded empty defaults; your
-            progress may still be in Postgres when the DB is back. Check Vercel → project → Storage / env{" "}
-            <span className="font-mono text-[11px]">POSTGRES_URL</span>, Neon dashboard (paused?), and function
-            logs for GET /api/state.
-          </p>
-        )}
-        {statePersistenceWarning === "memory" && (
-          <p className="mb-3 max-w-xl mx-auto rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2 text-left text-[13px] leading-snug text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
-            <strong className="font-semibold">No Postgres on the server.</strong> Progress is not durable (serverless
-            memory only). Add <span className="font-mono text-[11px]">POSTGRES_URL</span> from Vercel Postgres and
-            redeploy so saves persist.
-          </p>
-        )}
         <div>for Sean</div>
         <span className="inline-flex items-center justify-center gap-2">
           <span

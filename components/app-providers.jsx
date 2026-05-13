@@ -1,6 +1,8 @@
 "use client";
 
-import { ClerkProvider } from "@clerk/nextjs";
+import { ClerkProvider, useAuth } from "@clerk/nextjs";
+import { ConvexReactClient } from "convex/react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
 
 const clerkAppearance = {
   variables: {
@@ -16,6 +18,17 @@ const clerkAppearance = {
     }
   }
 };
+
+/**
+ * Convex client (browser-only). `NEXT_PUBLIC_CONVEX_URL` is written by
+ * `npx convex dev` and `npx convex deploy`. We always instantiate a
+ * client (even with a placeholder URL) so hooks like `useMutation` don't
+ * throw at render time if the env var is missing in some environment.
+ * Real calls just fail silently and our dual-write `.catch` handles it.
+ */
+const convexClient = new ConvexReactClient(
+  process.env.NEXT_PUBLIC_CONVEX_URL || "https://placeholder.convex.cloud"
+);
 
 /** Align Clerk redirect validation with NEXT_PUBLIC_APP_URL (Vercel / custom domain). */
 const allowedRedirectOrigins = (() => {
@@ -36,7 +49,9 @@ export default function AppProviders({ children }) {
       appearance={clerkAppearance}
       {...(allowedRedirectOrigins ? { allowedRedirectOrigins } : {})}
     >
-      {children}
+      <ConvexProviderWithClerk client={convexClient} useAuth={useAuth}>
+        {children}
+      </ConvexProviderWithClerk>
     </ClerkProvider>
   );
 }
