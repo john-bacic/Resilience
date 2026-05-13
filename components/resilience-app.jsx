@@ -1895,7 +1895,8 @@ export default function ResilienceApp() {
       const registration = await navigator.serviceWorker.ready;
       const existingSubscription = await registration.pushManager.getSubscription();
       setIsPushEnabled(Boolean(existingSubscription));
-      if (existingSubscription) {
+      /** Push mutation requires Clerk auth — only run when signed in. */
+      if (existingSubscription && isSignedIn) {
         await pushSubscribeMutation({ subscription: existingSubscription.toJSON() });
       }
     } catch (error) {
@@ -1976,10 +1977,14 @@ export default function ResilienceApp() {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
         .register("/sw.js")
-        .then(() => syncPushSubscription())
+        .then(() => {
+          /** Don't sync push until Clerk auth is ready — skip silently if not. */
+          if (isSignedIn) void syncPushSubscription();
+        })
         .catch((error) => console.error("Service worker registration failed", error));
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
