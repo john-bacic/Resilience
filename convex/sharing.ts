@@ -1,9 +1,18 @@
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
-import { requireCurrentUser } from "./lib/auth";
+import { getCurrentUserOrNull, requireCurrentUser } from "./lib/auth";
 import { ensureUserRowByClerkId, labelForUserDocId } from "./lib/shared";
 import { fetchClerkUserLabel, findClerkUserByEmail } from "./lib/clerk";
+
+/** Default payload for users with no Convex `users` row yet (first sign-in). */
+const EMPTY_SETTINGS = {
+  enabled: false,
+  shareDisplayName: "",
+  inviteUrl: null,
+  grantedTo: [],
+  grants: []
+} as const;
 
 const DISPLAY_NAME_MAX = 80;
 
@@ -69,7 +78,13 @@ export const getSettings = query({
   args: { appOrigin: v.optional(v.string()) },
   returns: settingsValidator,
   handler: async (ctx, args) => {
-    const user = await requireCurrentUser(ctx);
+    /**
+     * Tolerate "no users row yet" — first-time signed-in users may hit this
+     * before any mutation has bootstrapped their row. Return safe defaults
+     * instead of throwing.
+     */
+    const user = await getCurrentUserOrNull(ctx);
+    if (!user) return { ...EMPTY_SETTINGS };
     return await buildSettingsPayload(ctx, user._id, args.appOrigin ?? null);
   }
 });
@@ -286,7 +301,9 @@ export const listSharedDiaries = query({
     items: v.array(v.object({ ownerId: v.string(), label: v.string() }))
   }),
   handler: async (ctx) => {
-    const viewer = await requireCurrentUser(ctx);
+    /** Tolerate no users row yet (see `getSettings` for context). */
+    const viewer = await getCurrentUserOrNull(ctx);
+    if (!viewer) return { items: [] };
     const grants = await ctx.db
       .query("shareGrants")
       .withIndex("by_viewer", (q) => q.eq("viewerUserId", viewer._id))

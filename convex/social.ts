@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireCurrentUser } from "./lib/auth";
+import { getCurrentUserOrNull, requireCurrentUser } from "./lib/auth";
 
 const MAX_COMMENT_LEN = 2000;
 
@@ -288,7 +288,9 @@ export const ownerReactionsSummary = query({
   args: { limit: v.optional(v.number()) },
   returns: ownerReactionsSummaryValidator,
   handler: async (ctx, args) => {
-    const owner = await requireCurrentUser(ctx);
+    /** Tolerate no users row yet — first sign-in races queries vs. bootstrap. */
+    const owner = await getCurrentUserOrNull(ctx);
+    if (!owner) return { entries: [] };
     const limit = Math.min(500, Math.max(1, args.limit ?? 200));
 
     const likeRows = await ctx.db
