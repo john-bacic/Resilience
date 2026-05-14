@@ -3399,14 +3399,18 @@ export default function ResilienceApp() {
                   <button
                     type="button"
                     onClick={() => setUnshakenVideoOpen(true)}
-                    className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-950/25"
+                    className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-emerald-200/90 bg-emerald-50 p-3 text-left shadow-sm shadow-emerald-900/5 ring-1 ring-emerald-100/80 transition hover:border-emerald-300 hover:bg-emerald-100/95 hover:shadow-md hover:shadow-emerald-900/10 dark:border-emerald-500/35 dark:bg-emerald-950/55 dark:shadow-lg dark:shadow-black/40 dark:ring-1 dark:ring-emerald-400/15 dark:hover:border-emerald-400/50 dark:hover:bg-emerald-950/75 dark:hover:ring-emerald-300/25"
                   >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/50">
-                      <Play className="h-5 w-5 text-emerald-800 dark:text-emerald-300" fill="currentColor" />
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-200/90 dark:bg-emerald-900/70">
+                      <Play className="h-5 w-5 text-emerald-900 dark:text-emerald-200" fill="currentColor" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Unshaken</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Watch the video</p>
+                      <p className="text-sm font-semibold leading-snug text-emerald-950 dark:text-emerald-50">
+                        How to never be affected by anything or anyone!
+                      </p>
+                      <p className="mt-0.5 text-xs text-emerald-900/75 dark:text-emerald-200/80">
+                        Watch the video to start your journey.
+                      </p>
                     </div>
                   </button>
                   <div className="mb-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
@@ -4404,7 +4408,7 @@ export default function ResilienceApp() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Unshaken video"
+          aria-label="How to never be affected by anything or anyone! Intro video"
           onClick={(e) => {
             if (e.target === e.currentTarget) setUnshakenVideoOpen(false);
           }}
