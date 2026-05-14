@@ -1,4 +1,5 @@
 import { requireAuthUserId } from "@/lib/require-auth";
+import { appendProfileLocaleBlock } from "@/lib/ai-prompt-addendum";
 
 const emptyReflection = {
   facts: "",
@@ -55,7 +56,8 @@ async function generateReflection({
   reaction,
   variationStyle,
   temperature,
-  avoidText
+  avoidText,
+  profileAppend
 }) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -89,6 +91,7 @@ Rules:
 - Use vivid language and avoid bland phrases.
 - Keep the tone conversational and informal, like how real people talk.
 ${avoidText ? `Avoid repeating these phrases: ${avoidText}` : ""}
+${profileAppend || ""}
 
 Return JSON only.`
         }
@@ -110,6 +113,7 @@ export async function POST(request) {
     const body = await request.json();
     const reaction = String(body?.reaction || "").trim();
     const scenario = String(body?.scenario || "").trim();
+    const profileAppend = appendProfileLocaleBlock(String(body?.profile || "").trim());
 
     if (!reaction) {
       return Response.json({ error: "reaction is required" }, { status: 400 });
@@ -141,7 +145,8 @@ export async function POST(request) {
       reaction,
       variationStyle,
       temperature: 0.65,
-      avoidText: ""
+      avoidText: "",
+      profileAppend
     });
 
     let finalReflection = firstTry;
@@ -154,7 +159,8 @@ export async function POST(request) {
         reaction,
         variationStyle: "more specific and less repetitive",
         temperature: 0.9,
-        avoidText
+        avoidText,
+        profileAppend
       });
       finalReflection = secondTry || finalReflection;
     }

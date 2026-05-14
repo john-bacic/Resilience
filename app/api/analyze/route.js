@@ -1,4 +1,5 @@
 import { requireAuthUserId } from "@/lib/require-auth";
+import { appendProfileLocaleBlock } from "@/lib/ai-prompt-addendum";
 import { detectStepsWithDefault as detectSteps } from "@/lib/trigger-steps";
 
 function fallbackAnalysis(entryText) {
@@ -20,6 +21,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const entryText = String(body?.entryText || "").trim();
+    const profileBlock = appendProfileLocaleBlock(String(body?.profile || "").trim());
     if (!entryText) {
       return Response.json({ error: "entryText is required" }, { status: 400 });
     }
@@ -46,10 +48,14 @@ export async function POST(request) {
         messages: [
           {
             role: "user",
-            content: `Analyze this log entry and prefill journaling fields.
-Write naturally and casually (not formal).
-
-${entryText}`
+            content: [
+              "Analyze this log entry and prefill journaling fields.",
+              "Write naturally and casually (not formal).",
+              profileBlock,
+              entryText
+            ]
+              .filter(Boolean)
+              .join("\n\n")
           }
         ]
       })

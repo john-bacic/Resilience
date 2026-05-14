@@ -1,4 +1,5 @@
 import { requireAuthUserId } from "@/lib/require-auth";
+import { PROFILE_LOCALE_INSTRUCTION } from "@/lib/ai-prompt-addendum";
 
 const FALLBACK_SCENARIOS = [
   "Someone does not reply to your message.",
@@ -123,7 +124,9 @@ ${
   hasProfile
     ? `Personal profile (treat every statement as true; do not contradict it—e.g. if someone has no car, do not put vehicle problems on them; if notes say X, scenarios must remain consistent with X): ${profile}
 
-Important: Profile is background context. Do NOT center most scenarios on children or the same family member by default—only when the style above clearly calls for family/parent/child dynamics. Often stress work, money, health (yourself), friends, partner, bureaucracy, or community instead, while still obeying profile facts.`
+Important: Profile is background context. Do NOT center most scenarios on children or the same family member by default—only when the style above clearly calls for family/parent/child dynamics. Often stress work, money, health (yourself), friends, partner, bureaucracy, or community instead, while still obeying profile facts.
+
+${PROFILE_LOCALE_INSTRUCTION}`
     : ""
 }
 Ground the scenario in real life; match the style's emotional weight (lighter styles = stressful but everyday; heavier styles = allow more severe, devastating outcomes that could plausibly happen).

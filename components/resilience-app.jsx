@@ -2436,7 +2436,10 @@ export default function ResilienceApp() {
           const res = await fetch("/api/diary-insights", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ entries: recentEntries })
+            body: JSON.stringify({
+              entries: recentEntries,
+              profile: profileToScenarioContext(app.personalProfile)
+            })
           });
           if (res.ok) insights = await res.json();
         } catch {
@@ -2463,7 +2466,7 @@ export default function ResilienceApp() {
         setCelebrationLoading(false);
       }
     },
-    [app.diary, app.reflections.length]
+    [app.diary, app.reflections.length, app.personalProfile]
   );
 
   useEffect(() => {
@@ -2554,7 +2557,10 @@ export default function ResilienceApp() {
       const res = await fetch("/api/diary-insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entries: diaryInsightsPayload })
+        body: JSON.stringify({
+          entries: diaryInsightsPayload,
+          profile: profileToScenarioContext(app.personalProfile)
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2568,7 +2574,7 @@ export default function ResilienceApp() {
     } finally {
       if (reqId === diaryInsightsReqIdRef.current) setDiaryInsightsLoading(false);
     }
-  }, [diaryInsightsPayload]);
+  }, [diaryInsightsPayload, app.personalProfile]);
 
   /** Clear stale analysis when entries are added/removed; user runs Analyze again. */
   useEffect(() => {
@@ -2601,7 +2607,8 @@ export default function ResilienceApp() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             reaction: trimmed,
-            scenario: reflectionScenario || todayScenario
+            scenario: reflectionScenario || todayScenario,
+            profile: profileToScenarioContext(app.personalProfile)
           })
         });
         if (!response.ok) return;
@@ -2691,7 +2698,10 @@ export default function ResilienceApp() {
         const response = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ entryText: eventText })
+          body: JSON.stringify({
+            entryText: eventText,
+            profile: profileToScenarioContext(app.personalProfile)
+          })
         });
         if (!response.ok) {
           setAnalysis(detectSteps(eventText));

@@ -1,4 +1,5 @@
 import { jsonrepair } from "jsonrepair";
+import { appendProfileLocaleBlock } from "@/lib/ai-prompt-addendum";
 import { requireAuthUserId } from "@/lib/require-auth";
 import {
   detectStepsStrict,
@@ -212,6 +213,7 @@ export async function POST(request) {
 
   const raw = Array.isArray(body?.entries) ? body.entries : [];
   const entries = raw.slice(0, 60);
+  const profileBlock = appendProfileLocaleBlock(String(body?.profile || "").trim());
   if (entries.length === 0) {
     return Response.json({ error: "entries array required" }, { status: 400 });
   }
@@ -276,7 +278,7 @@ You must call the tool submit_journal_insights exactly once with overview, patte
         messages: [
           {
             role: "user",
-            content: `Their diary entries (JSON, newest first). Respond only by calling submit_journal_insights:\n${JSON.stringify(entries)}`
+            content: `${profileBlock ? `${profileBlock}\n\n` : ""}Their diary entries (JSON, newest first). Respond only by calling submit_journal_insights:\n${JSON.stringify(entries)}`
           }
         ]
       })
