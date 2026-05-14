@@ -68,11 +68,22 @@ const SCENARIOS = [
 /** Undo delete toast duration (must match progress bar animation + timeout). */
 const DELETE_UNDO_TOAST_MS = 6000;
 
+/** Program length presets (days). Used by the selector in the focus panel. */
+const PROGRAM_LENGTH_OPTIONS = [
+  { value: 7, label: "7 days" },
+  { value: 30, label: "30 days" },
+  { value: 90, label: "3 months" },
+  { value: 180, label: "6 months" },
+  { value: 365, label: "1 year" }
+];
+const DEFAULT_PROGRAM_LENGTH = 30;
+
 const DEFAULT_STATE = {
   day: 1,
   startDate: null,
   reminderTime: "8:00 AM",
   tone: "Balanced",
+  programLength: DEFAULT_PROGRAM_LENGTH,
   personalProfile: {
     age: "",
     birthday: "",
@@ -88,9 +99,18 @@ const DEFAULT_STATE = {
   reflections: [],
   diary: [],
   scenarioHistory: [],
+  /** Completion badges — one per program-length milestone reached. */
+  completions: [],
   lastCompletedDay: 0,
   streak: 0
 };
+
+/** Pretty label for a program-length completion badge ("30 days", "3 months", etc.). */
+function formatProgramLengthLabel(length) {
+  const opt = PROGRAM_LENGTH_OPTIONS.find((o) => o.value === length);
+  if (opt) return opt.label;
+  return `${length} day${length === 1 ? "" : "s"}`;
+}
 
 function getRandomId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -132,6 +152,7 @@ function pickStateForConvex(state) {
     tone: typeof state.tone === "string" ? state.tone : "Balanced",
     lastCompletedDay: Number(state.lastCompletedDay) || 0,
     streak: Number(state.streak) || 0,
+    programLength: clampProgramLength(state.programLength ?? DEFAULT_PROGRAM_LENGTH),
     scenarioHistory: Array.isArray(state.scenarioHistory)
       ? state.scenarioHistory.filter((s) => typeof s === "string")
       : [],
@@ -150,6 +171,20 @@ function pickStateForConvex(state) {
       ? state.intentions
           .filter((i) => i && typeof i === "object" && typeof i.id === "string" && typeof i.text === "string")
           .map((i) => pickWhitelisted(i, intentionFields))
+      : [],
+    completions: Array.isArray(state.completions)
+      ? state.completions
+          .filter((c) => c && typeof c === "object" && typeof c.id === "string" && typeof c.programLength === "number")
+          .map((c) => ({
+            id: c.id,
+            programLength: c.programLength,
+            completedAt: typeof c.completedAt === "string" ? c.completedAt : new Date().toISOString(),
+            diaryCount: Number(c.diaryCount) || 0,
+            reflectionCount: Number(c.reflectionCount) || 0,
+            overview: typeof c.overview === "string" ? c.overview : "",
+            patterns: Array.isArray(c.patterns) ? c.patterns.filter((p) => typeof p === "string") : [],
+            caveat: typeof c.caveat === "string" ? c.caveat : ""
+          }))
       : []
   };
 }
@@ -162,6 +197,8 @@ function normalizeAppState(raw) {
     merged.scenarioHistory = Array.isArray(merged.scenarioHistory)
       ? merged.scenarioHistory.map((s) => String(s || "").trim()).filter(Boolean)
       : [];
+    merged.completions = Array.isArray(merged.completions) ? merged.completions : [];
+    merged.programLength = clampProgramLength(merged.programLength ?? DEFAULT_PROGRAM_LENGTH);
     merged.diary = Array.isArray(merged.diary)
       ? merged.diary.map((entry) => {
           if (!entry || typeof entry !== "object") {
@@ -210,7 +247,13 @@ function toDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function programDayFromStart(startDateKey) {
+function clampProgramLength(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_PROGRAM_LENGTH;
+  return Math.max(1, Math.min(3650, Math.round(n)));
+}
+
+function programDayFromStart(startDateKey, programLength = DEFAULT_PROGRAM_LENGTH) {
   if (!startDateKey) return 1;
   const [year, month, day] = String(startDateKey).split("-").map(Number);
   if (!year || !month || !day) return 1;
@@ -218,11 +261,11 @@ function programDayFromStart(startDateKey) {
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const diffDays = Math.floor((todayStart - start) / 86400000) + 1;
-  return Math.max(1, Math.min(30, diffDays));
+  return Math.max(1, Math.min(clampProgramLength(programLength), diffDays));
 }
 
-/** Program day (1–30) for an event on `entryDateKey` relative to program `startDateKey`. Null if entry is before start. */
-function programDayForEntry(startDateKey, entryDateKey) {
+/** Program day for an event on `entryDateKey`. Null if entry is before start. */
+function programDayForEntry(startDateKey, entryDateKey, programLength = DEFAULT_PROGRAM_LENGTH) {
   const [y1, m1, d1] = String(startDateKey).split("-").map(Number);
   const [y2, m2, d2] = String(entryDateKey).split("-").map(Number);
   if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return 1;
@@ -230,7 +273,7 @@ function programDayForEntry(startDateKey, entryDateKey) {
   const end = new Date(y2, m2 - 1, d2);
   if (end < start) return null;
   const diffDays = Math.floor((end - start) / 86400000) + 1;
-  return Math.max(1, Math.min(30, diffDays));
+  return Math.max(1, Math.min(clampProgramLength(programLength), diffDays));
 }
 
 /** Calendar key for a diary row: logged date for logs, else local date from `createdAt`. */
@@ -261,22 +304,22 @@ function programProgressAnchorKey(diary, startDateFallback) {
   return fromDiary ?? startDateFallback ?? null;
 }
 
-function maxProgramDayInDiary(diary, anchorKey) {
+function maxProgramDayInDiary(diary, anchorKey, programLength = DEFAULT_PROGRAM_LENGTH) {
   if (!anchorKey || !Array.isArray(diary) || diary.length === 0) return 0;
   let max = 0;
   for (const e of diary) {
     const dk = diaryEntryDateKey(e);
     if (!dk) continue;
-    const d = programDayForEntry(anchorKey, dk);
+    const d = programDayForEntry(anchorKey, dk, programLength);
     if (d != null) max = Math.max(max, d);
   }
   return max;
 }
 
 /** Recompute persisted start + completed-day stats from the diary list. */
-function progressFieldsFromDiary(diary) {
+function progressFieldsFromDiary(diary, programLength = DEFAULT_PROGRAM_LENGTH) {
   const anchor = earliestDiaryDateKey(diary);
-  const maxD = maxProgramDayInDiary(diary, anchor);
+  const maxD = maxProgramDayInDiary(diary, anchor, programLength);
   return {
     startDate: anchor,
     lastCompletedDay: maxD
@@ -1680,6 +1723,11 @@ export default function ResilienceApp() {
   const [diaryInsightsError, setDiaryInsightsError] = useState(null);
   const diaryInsightsReqIdRef = useRef(0);
   const [unshakenVideoOpen, setUnshakenVideoOpen] = useState(false);
+  /** Program-completion celebration modal state. */
+  const [celebrationOpen, setCelebrationOpen] = useState(false);
+  const [celebrationLoading, setCelebrationLoading] = useState(false);
+  const [activeCompletion, setActiveCompletion] = useState(null);
+  const celebrationTriggeredRef = useRef(false);
   const unshakenVideoRef = useRef(null);
   const diaryEditModalWasOpenRef = useRef(false);
   const isAnyModalOpen =
@@ -2096,15 +2144,20 @@ export default function ResilienceApp() {
     () => programProgressAnchorKey(app.diary, app.startDate),
     [app.diary, app.startDate]
   );
-  const currentProgramDay = useMemo(() => programDayFromStart(programAnchorKey), [programAnchorKey]);
+  /** Current program length (with default fallback for legacy rows). */
+  const programLength = useMemo(() => clampProgramLength(app.programLength ?? DEFAULT_PROGRAM_LENGTH), [app.programLength]);
+  const currentProgramDay = useMemo(
+    () => programDayFromStart(programAnchorKey, programLength),
+    [programAnchorKey, programLength]
+  );
 
-  /** Avoid flashing "Day 1 of 30" before server state hydrates (signed-in only). */
+  /** Avoid flashing "Day 1 of N" before server state hydrates (signed-in only). */
   const homeHeroDayTitle = useMemo(() => {
     if (clerkAuthSignature === "loading") return "Day";
-    if (clerkAuthSignature === "signed-out") return `Day ${currentProgramDay} of 30`;
+    if (clerkAuthSignature === "signed-out") return `Day ${currentProgramDay} of ${programLength}`;
     if (!initialStateLoaded) return "Day";
-    return `Day ${currentProgramDay} of 30`;
-  }, [clerkAuthSignature, initialStateLoaded, currentProgramDay]);
+    return `Day ${currentProgramDay} of ${programLength}`;
+  }, [clerkAuthSignature, initialStateLoaded, currentProgramDay, programLength]);
 
   const logEntryPreviewStart = useMemo(
     () =>
@@ -2116,8 +2169,8 @@ export default function ResilienceApp() {
     [programAnchorKey, logEntryDateKey]
   );
   const logEntryPreviewDay = useMemo(
-    () => programDayForEntry(logEntryPreviewStart, logEntryDateKey),
-    [logEntryPreviewStart, logEntryDateKey]
+    () => programDayForEntry(logEntryPreviewStart, logEntryDateKey, programLength),
+    [logEntryPreviewStart, logEntryDateKey, programLength]
   );
 
   const diaryEntriesSorted = useMemo(
@@ -2321,13 +2374,96 @@ export default function ResilienceApp() {
   );
   const lastCompletedEffective = useMemo(
     () =>
-      Math.max(app.lastCompletedDay, maxProgramDayInDiary(app.diary, programAnchorKey)),
-    [app.lastCompletedDay, app.diary, programAnchorKey]
+      Math.max(app.lastCompletedDay, maxProgramDayInDiary(app.diary, programAnchorKey, programLength)),
+    [app.lastCompletedDay, app.diary, programAnchorKey, programLength]
   );
   const completionPercent = useMemo(
-    () => Math.round((lastCompletedEffective / 30) * 100),
-    [lastCompletedEffective]
+    () => Math.round((lastCompletedEffective / programLength) * 100),
+    [lastCompletedEffective, programLength]
   );
+
+  /** True once the user has logged enough days to "finish" their chosen program length. */
+  const programFinishedNow = lastCompletedEffective >= programLength;
+  /** Already-earned badge for the current program length (or undefined). */
+  const earnedBadgeForCurrentLength = useMemo(
+    () => (app.completions || []).find((c) => c.programLength === programLength),
+    [app.completions, programLength]
+  );
+
+  /**
+   * On reaching the milestone for the first time at the current programLength,
+   * pop the celebration modal, fetch AI insights, then save a badge.
+   * `celebrationTriggeredRef` prevents re-firing within the same session.
+   */
+  const celebrateCompletion = useCallback(
+    async (lengthAtCompletion) => {
+      if (celebrationTriggeredRef.current) return;
+      celebrationTriggeredRef.current = true;
+      setActiveCompletion(null);
+      setCelebrationLoading(true);
+      setCelebrationOpen(true);
+      try {
+        const recentEntries = (app.diary || [])
+          .slice()
+          .sort((a, b) => {
+            const aT = a?.createdAt ? Date.parse(a.createdAt) : 0;
+            const bT = b?.createdAt ? Date.parse(b.createdAt) : 0;
+            return bT - aT;
+          })
+          .slice(0, 60);
+        let insights = null;
+        try {
+          const res = await fetch("/api/diary-insights", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entries: recentEntries })
+          });
+          if (res.ok) insights = await res.json();
+        } catch {
+          /* swallow — we fall through to a local summary */
+        }
+        const completion = {
+          id: getRandomId(),
+          programLength: lengthAtCompletion,
+          completedAt: new Date().toISOString(),
+          diaryCount: app.diary.length,
+          reflectionCount: app.reflections.length,
+          overview:
+            insights?.overview ||
+            `You finished ${formatProgramLengthLabel(lengthAtCompletion)} of practice. That is real evidence, not vibes — you showed up.`,
+          patterns: Array.isArray(insights?.patterns) ? insights.patterns.slice(0, 8) : [],
+          caveat: insights?.caveat || ""
+        };
+        setActiveCompletion(completion);
+        setAndPersist((prev) => ({
+          ...prev,
+          completions: [...(prev.completions || []), completion]
+        }));
+      } finally {
+        setCelebrationLoading(false);
+      }
+    },
+    [app.diary, app.reflections.length]
+  );
+
+  useEffect(() => {
+    if (!initialStateLoaded) return;
+    if (!programFinishedNow) return;
+    if (earnedBadgeForCurrentLength) return;
+    void celebrateCompletion(programLength);
+  }, [initialStateLoaded, programFinishedNow, earnedBadgeForCurrentLength, programLength, celebrateCompletion]);
+
+  /** Manually reopen a saved badge from the badge UI. */
+  function openCompletionBadge(completion) {
+    if (!completion) return;
+    setActiveCompletion(completion);
+    setCelebrationLoading(false);
+    setCelebrationOpen(true);
+  }
+
+  function closeCelebration() {
+    setCelebrationOpen(false);
+  }
   const diaryStats = useMemo(() => {
     const total = app.diary.length;
 
@@ -2503,12 +2639,12 @@ export default function ResilienceApp() {
       const anchor = programProgressAnchorKey(newDiary, prev.startDate);
       const entryDateKey = diaryEntryDateKey(diaryEntryFromReflectionBase);
       const safeAnchor = anchor ?? entryDateKey ?? todayDateKey;
-      const dayForEntry = programDayForEntry(safeAnchor, entryDateKey || todayDateKey) ?? 1;
-      const todayProgramDay = programDayFromStart(safeAnchor);
+      const dayForEntry = programDayForEntry(safeAnchor, entryDateKey || todayDateKey, programLength) ?? 1;
+      const todayProgramDay = programDayFromStart(safeAnchor, programLength);
 
       const entry = { ...reflectionEntryBase, day: dayForEntry };
       const diaryEntryFromReflection = { ...diaryEntryFromReflectionBase, day: dayForEntry };
-      const pf = progressFieldsFromDiary([diaryEntryFromReflection, ...prev.diary]);
+      const pf = progressFieldsFromDiary([diaryEntryFromReflection, ...prev.diary], programLength);
 
       return {
         ...prev,
@@ -2588,7 +2724,7 @@ export default function ResilienceApp() {
       createdAt
     };
     const anchor = programProgressAnchorKey([diaryEntryBase, ...app.diary], app.startDate) ?? logEntryDateKey;
-    const dayForEntry = programDayForEntry(anchor, logEntryDateKey);
+    const dayForEntry = programDayForEntry(anchor, logEntryDateKey, programLength);
     if (dayForEntry == null) {
       window.alert("That date is before your program start. Choose a later date.");
       return;
@@ -2597,8 +2733,8 @@ export default function ResilienceApp() {
     const diaryEntry = { ...diaryEntryBase, day: dayForEntry };
     setAndPersist((prev) => {
       const newDiary = [diaryEntry, ...prev.diary];
-      const pf = progressFieldsFromDiary(newDiary);
-      const todayProgramDay = programDayFromStart(pf.startDate);
+      const pf = progressFieldsFromDiary(newDiary, programLength);
+      const todayProgramDay = programDayFromStart(pf.startDate, programLength);
       const nextCompleted = Math.max(pf.lastCompletedDay, todayProgramDay);
       return {
         ...prev,
@@ -3005,9 +3141,9 @@ export default function ResilienceApp() {
       }, DELETE_UNDO_TOAST_MS);
 
       const nextDiary = prev.diary.filter((entry) => entry.id !== entryId);
-      const pf = progressFieldsFromDiary(nextDiary);
+      const pf = progressFieldsFromDiary(nextDiary, programLength);
       const todayBump =
-        nextDiary.length === 0 || !pf.startDate ? 0 : programDayFromStart(pf.startDate);
+        nextDiary.length === 0 || !pf.startDate ? 0 : programDayFromStart(pf.startDate, programLength);
       return {
         ...prev,
         diary: nextDiary,
@@ -3031,9 +3167,9 @@ export default function ResilienceApp() {
       const nextDiary = [...prev.diary];
       const safeIndex = Math.max(0, Math.min(index, nextDiary.length));
       nextDiary.splice(safeIndex, 0, entry);
-      const pf = progressFieldsFromDiary(nextDiary);
+      const pf = progressFieldsFromDiary(nextDiary, programLength);
       const todayBump =
-        nextDiary.length === 0 || !pf.startDate ? 0 : programDayFromStart(pf.startDate);
+        nextDiary.length === 0 || !pf.startDate ? 0 : programDayFromStart(pf.startDate, programLength);
       return {
         ...prev,
         diary: nextDiary,
@@ -3332,6 +3468,62 @@ export default function ResilienceApp() {
                       {profileSavedFeedback ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : null}
                       {profileSavedFeedback ? "Saved" : "Save profile context"}
                     </Button>
+                  </div>
+                  {Array.isArray(app.completions) && app.completions.length > 0 ? (
+                    <div className="mt-4 rounded-2xl border border-emerald-200/70 bg-emerald-50/45 p-3 dark:border-emerald-700/60 dark:bg-emerald-950/25">
+                      <p className="text-xs uppercase tracking-[0.2em] text-emerald-800 dark:text-emerald-300">
+                        Completed
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {app.completions
+                          .slice()
+                          .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt))
+                          .map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => openCompletionBadge(c)}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-white/70 px-2.5 py-1 text-[11px] font-medium text-emerald-900 transition hover:bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-100 dark:hover:bg-emerald-900/55"
+                            >
+                              <Sparkles className="h-3 w-3" strokeWidth={2.4} />
+                              {formatProgramLengthLabel(c.programLength)}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                      Program length
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Extend the rehearsal beyond 30 days. New entries respect the new length; older
+                      logged days stay where they are.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {PROGRAM_LENGTH_OPTIONS.map((opt) => {
+                        const active = programLength === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() =>
+                              setAndPersist((prev) => ({
+                                ...prev,
+                                programLength: clampProgramLength(opt.value)
+                              }))
+                            }
+                            className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:focus-visible:ring-emerald-500 ${
+                              active
+                                ? "border-emerald-500 bg-emerald-100 text-emerald-900 dark:border-emerald-500 dark:bg-emerald-900/40 dark:text-emerald-100"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                   <Button
                     variant="outline"
@@ -3713,7 +3905,7 @@ export default function ResilienceApp() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-                        <span>{lastCompletedEffective}/30 days complete</span>
+                        <span>{lastCompletedEffective}/{programLength} days complete</span>
                         <span>{completionPercent}%</span>
                       </div>
                       <Progress value={completionPercent} />
@@ -3864,6 +4056,40 @@ export default function ResilienceApp() {
                           </button>
                         </div>
                       </div>
+                      {Array.isArray(app.completions) && app.completions.length > 0 ? (
+                        <div className="mt-3 rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-3 dark:border-emerald-700/60 dark:bg-emerald-950/25">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                            Completions
+                          </p>
+                          <div className="mt-2 space-y-1.5">
+                            {app.completions
+                              .slice()
+                              .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt))
+                              .map((c) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onClick={() => openCompletionBadge(c)}
+                                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-left transition hover:bg-emerald-50/70 dark:border-emerald-700 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.4} />
+                                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                      {formatProgramLengthLabel(c.programLength)}
+                                    </span>
+                                  </span>
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    {new Date(c.completedAt).toLocaleDateString([], {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric"
+                                    })}
+                                  </span>
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <p className="text-sm text-slate-700 dark:text-slate-300">Entries: {diaryStats.total}</p>
                       <p
                         className="text-sm text-slate-700 dark:text-slate-300"
@@ -4018,6 +4244,118 @@ export default function ResilienceApp() {
           </div>
         </div>
       </div>
+
+      {celebrationOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Program complete"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCelebration();
+          }}
+        >
+          <Card className="relative max-h-[90vh] w-full max-w-2xl overflow-auto">
+            <button
+              type="button"
+              onClick={closeCelebration}
+              aria-label="Close"
+              className="absolute right-3 top-3 z-10 rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            >
+              <X className="h-5 w-5" strokeWidth={2} />
+            </button>
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 p-2 text-white shadow">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle>
+                    {activeCompletion
+                      ? `${formatProgramLengthLabel(activeCompletion.programLength)} complete`
+                      : "Program complete"}
+                  </CardTitle>
+                  <CardDescription>
+                    {activeCompletion?.completedAt
+                      ? `Earned ${new Date(activeCompletion.completedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`
+                      : "Your rehearsal milestone."}
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-3 text-center dark:border-emerald-700/60 dark:bg-emerald-950/30">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                    Days completed
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                    {activeCompletion?.programLength ?? programLength}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-center dark:border-slate-700 dark:bg-slate-900/70">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                    Diary entries
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                    {activeCompletion?.diaryCount ?? app.diary.length}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-center dark:border-slate-700 dark:bg-slate-900/70">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                    Reflections
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                    {activeCompletion?.reflectionCount ?? app.reflections.length}
+                  </p>
+                </div>
+              </div>
+
+              {celebrationLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
+                  Reading your entries… distilling what stood out.
+                </div>
+              ) : (
+                <>
+                  {activeCompletion?.overview ? (
+                    <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-4 dark:border-emerald-700/60 dark:bg-emerald-950/25">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                        What you've learned
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-200">
+                        {activeCompletion.overview}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {Array.isArray(activeCompletion?.patterns) && activeCompletion.patterns.length > 0 ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        AI pattern read
+                      </p>
+                      <ul className="mt-3 space-y-2">
+                        {activeCompletion.patterns.map((p, i) => (
+                          <li key={i} className="flex gap-2.5 text-sm leading-6 text-slate-700 dark:text-slate-300">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400" aria-hidden />
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {activeCompletion.caveat ? (
+                        <p className="mt-3 text-xs text-slate-500 dark:text-slate-500">{activeCompletion.caveat}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <Button onClick={closeCelebration}>Close</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {unshakenVideoOpen && (
         <div

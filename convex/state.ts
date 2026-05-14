@@ -71,17 +71,30 @@ const intentionValidator = v.object({
   day: v.optional(v.number())
 });
 
+const completionValidator = v.object({
+  id: v.string(),
+  programLength: v.number(),
+  completedAt: v.string(),
+  diaryCount: v.number(),
+  reflectionCount: v.optional(v.number()),
+  overview: v.string(),
+  patterns: v.array(v.string()),
+  caveat: v.optional(v.string())
+});
+
 const stateValidator = v.object({
   startDate: v.optional(v.union(v.string(), v.null())),
   reminderTime: v.optional(v.string()),
   tone: v.optional(v.string()),
   lastCompletedDay: v.optional(v.number()),
   streak: v.optional(v.number()),
+  programLength: v.optional(v.number()),
   scenarioHistory: v.optional(v.array(v.string())),
   personalProfile: v.optional(personalProfileValidator),
   diary: v.optional(v.array(diaryEntryValidator)),
   reflections: v.optional(v.array(reflectionValidator)),
-  intentions: v.optional(v.array(intentionValidator))
+  intentions: v.optional(v.array(intentionValidator)),
+  completions: v.optional(v.array(completionValidator))
 });
 
 function isoToMs(iso: string | undefined, fallback: number): number {
@@ -133,7 +146,9 @@ export const replaceFromState = mutation({
       tone: state.tone ?? "Balanced",
       lastCompletedDay: state.lastCompletedDay ?? 0,
       streak: state.streak ?? 0,
+      programLength: state.programLength ?? undefined,
       scenarioHistory: state.scenarioHistory ?? [],
+      completions: state.completions ?? [],
       updatedAt: now
     };
     if (existingProgress) {
@@ -320,11 +335,13 @@ export const getCurrent = query({
       tone: v.string(),
       lastCompletedDay: v.number(),
       streak: v.number(),
+      programLength: v.number(),
       scenarioHistory: v.array(v.string()),
       personalProfile: personalProfileValidator,
       diary: v.array(diaryEntryValidator),
       reflections: v.array(reflectionValidator),
-      intentions: v.array(intentionValidator)
+      intentions: v.array(intentionValidator),
+      completions: v.array(completionValidator)
     })
   ),
   handler: async (ctx) => {
@@ -363,7 +380,9 @@ export const getCurrent = query({
       tone: progress?.tone ?? "Balanced",
       lastCompletedDay: progress?.lastCompletedDay ?? 0,
       streak: progress?.streak ?? 0,
+      programLength: progress?.programLength ?? 30,
       scenarioHistory: progress?.scenarioHistory ?? [],
+      completions: progress?.completions ?? [],
       personalProfile: {
         age: profile?.age ?? "",
         birthday: profile?.birthday ?? "",

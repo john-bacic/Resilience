@@ -38,8 +38,25 @@ export default defineSchema({
     tone: v.string(),
     lastCompletedDay: v.number(),
     streak: v.number(),
+    /** User-configurable program duration in days. Defaults to 30. */
+    programLength: v.optional(v.number()),
     /** Bounded (sliced to 2000 client-side); fine to keep inline. */
     scenarioHistory: v.array(v.string()),
+    /** Program-completion badges. Embedded — small bounded list per user. */
+    completions: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          programLength: v.number(),
+          completedAt: v.string(),
+          diaryCount: v.number(),
+          reflectionCount: v.optional(v.number()),
+          overview: v.string(),
+          patterns: v.array(v.string()),
+          caveat: v.optional(v.string())
+        })
+      )
+    ),
     updatedAt: v.number()
   }).index("by_user", ["userId"]),
 
