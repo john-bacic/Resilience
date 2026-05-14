@@ -193,6 +193,8 @@ export const restoreUserState = mutation({
         v.object({
           age: v.optional(v.string()),
           birthday: v.optional(v.string()),
+          country: v.optional(v.string()),
+          nationality: v.optional(v.string()),
           maritalStatus: v.optional(v.string()),
           children: v.optional(v.string()),
           dog: v.optional(v.string()),
@@ -242,6 +244,8 @@ export const restoreUserState = mutation({
       userId: user._id,
       age: p.age || undefined,
       birthday: p.birthday || undefined,
+      country: p.country || undefined,
+      nationality: p.nationality || undefined,
       maritalStatus: p.maritalStatus || undefined,
       children: p.children || undefined,
       dog: p.dog || undefined,

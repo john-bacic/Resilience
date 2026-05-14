@@ -67,6 +67,8 @@ export default defineSchema({
     userId: v.id("users"),
     age: v.optional(v.string()),
     birthday: v.optional(v.string()),
+    country: v.optional(v.string()),
+    nationality: v.optional(v.string()),
     maritalStatus: v.optional(v.string()),
     children: v.optional(v.string()),
     dog: v.optional(v.string()),

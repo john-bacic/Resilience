@@ -87,6 +87,8 @@ const DEFAULT_STATE = {
   personalProfile: {
     age: "",
     birthday: "",
+    country: "",
+    nationality: "",
     maritalStatus: "",
     children: "",
     dog: "",
@@ -127,7 +129,19 @@ function getRandomId() {
 function pickStateForConvex(state) {
   if (!state || typeof state !== "object") return null;
   const profile = state.personalProfile || {};
-  const profileFields = ["age", "birthday", "maritalStatus", "children", "dog", "partner", "job", "friends", "notes"];
+  const profileFields = [
+    "age",
+    "birthday",
+    "country",
+    "nationality",
+    "maritalStatus",
+    "children",
+    "dog",
+    "partner",
+    "job",
+    "friends",
+    "notes"
+  ];
   const diaryFields = [
     "id", "day", "loggedDateKey", "title", "rawText", "scenario", "source",
     "triggeredSteps", "fact", "story", "outsideControl", "insideControl",
@@ -453,6 +467,8 @@ function profileToScenarioContext(profile) {
   const entries = [
     ["Age", ageForProfile(profile)],
     ["Birthday", profile.birthday],
+    ["Country", profile.country],
+    ["Nationality", profile.nationality],
     ["Marital status", profile.maritalStatus],
     ["Children", profile.children],
     ["Dog", profile.dog],
@@ -1843,6 +1859,8 @@ export default function ResilienceApp() {
     const nextProfile = {
       birthday,
       age: birthday && computedAge != null ? String(computedAge) : String(profileDraft.age || "").trim(),
+      country: String(profileDraft.country || "").trim(),
+      nationality: String(profileDraft.nationality || "").trim(),
       maritalStatus: String(profileDraft.maritalStatus || "").trim(),
       children: String(profileDraft.children || "").trim(),
       dog: String(profileDraft.dog || "").trim(),
@@ -3423,6 +3441,18 @@ export default function ResilienceApp() {
                           </p>
                         ) : null}
                       </div>
+                      <Textarea
+                        value={profileDraft.country}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, country: event.target.value }))}
+                        placeholder="Country (where you live)"
+                        className="min-h-[2.75rem]"
+                      />
+                      <Textarea
+                        value={profileDraft.nationality}
+                        onChange={(event) => setProfileDraft((prev) => ({ ...prev, nationality: event.target.value }))}
+                        placeholder="Nationality / citizenship"
+                        className="min-h-[2.75rem]"
+                      />
                       <Textarea
                         value={profileDraft.maritalStatus}
                         onChange={(event) => setProfileDraft((prev) => ({ ...prev, maritalStatus: event.target.value }))}

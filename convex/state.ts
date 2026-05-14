@@ -22,6 +22,8 @@ import type { MutationCtx } from "./_generated/server";
 const personalProfileValidator = v.object({
   age: v.optional(v.string()),
   birthday: v.optional(v.string()),
+  country: v.optional(v.string()),
+  nationality: v.optional(v.string()),
   maritalStatus: v.optional(v.string()),
   children: v.optional(v.string()),
   dog: v.optional(v.string()),
@@ -167,6 +169,8 @@ export const replaceFromState = mutation({
       userId: user._id,
       age: profile.age || undefined,
       birthday: profile.birthday || undefined,
+      country: profile.country || undefined,
+      nationality: profile.nationality || undefined,
       maritalStatus: profile.maritalStatus || undefined,
       children: profile.children || undefined,
       dog: profile.dog || undefined,
@@ -386,6 +390,8 @@ export const getCurrent = query({
       personalProfile: {
         age: profile?.age ?? "",
         birthday: profile?.birthday ?? "",
+        country: profile?.country ?? "",
+        nationality: profile?.nationality ?? "",
         maritalStatus: profile?.maritalStatus ?? "",
         children: profile?.children ?? "",
         dog: profile?.dog ?? "",
