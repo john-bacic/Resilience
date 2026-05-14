@@ -31,8 +31,15 @@ export default function Error({ error, reset }) {
       >
         Try again
       </button>
-      {process.env.NODE_ENV === "development" && detail ? (
-        <pre className="max-w-lg overflow-auto text-xs text-red-600 dark:text-red-400">{detail}</pre>
+      {detail ? (
+        <details className="max-w-lg rounded-xl border border-slate-200 bg-white/80 p-3 text-left dark:border-slate-700 dark:bg-slate-900/80">
+          <summary className="cursor-pointer text-xs font-medium text-slate-600 dark:text-slate-400">
+            Technical details
+          </summary>
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-red-700 dark:text-red-300">
+            {detail}
+          </pre>
+        </details>
       ) : null}
     </div>
   );
