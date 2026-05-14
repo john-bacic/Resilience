@@ -783,7 +783,9 @@ function Button({ className = "", variant = "default", type = "button", children
       ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
       : variant === "lime"
         ? "border border-emerald-300 bg-emerald-50 font-medium text-emerald-800 shadow-sm shadow-emerald-900/10 hover:bg-emerald-100/90 hover:shadow-md hover:shadow-emerald-900/15 focus-visible:ring-2 focus-visible:ring-emerald-400/60 focus-visible:ring-offset-2 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-200 dark:shadow-black/25 dark:hover:bg-emerald-900/55 dark:hover:shadow-md dark:hover:shadow-black/30 dark:focus-visible:ring-emerald-500/50"
-        : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
+        : variant === "emerald"
+          ? "border border-emerald-600 bg-emerald-500 font-semibold text-white shadow-md shadow-emerald-900/20 hover:bg-emerald-600 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 dark:border-emerald-400 dark:bg-emerald-500 dark:text-white dark:hover:bg-emerald-400 dark:focus-visible:ring-emerald-200 dark:focus-visible:ring-offset-slate-950 disabled:opacity-60"
+          : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
   return (
     <button type={type} className={`${base} ${style} ${className}`} {...props}>
       {children}
@@ -4421,7 +4423,7 @@ export default function ResilienceApp() {
                 {reflection.reaction.trim() && (
                   <div className="mt-2 flex justify-end">
                     <Button
-                      variant="outline"
+                      variant="emerald"
                       onClick={() => prefillReflectionFromReaction(reflection.reaction)}
                       disabled={isPrefillingReflection}
                     >
