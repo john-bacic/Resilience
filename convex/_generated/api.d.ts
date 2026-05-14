@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as backups from "../backups.js";
 import type * as crons from "../crons.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_clerk from "../lib/clerk.js";
@@ -27,6 +28,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  backups: typeof backups;
   crons: typeof crons;
   "lib/auth": typeof lib_auth;
   "lib/clerk": typeof lib_clerk;

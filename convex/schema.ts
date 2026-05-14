@@ -205,5 +205,28 @@ export default defineSchema({
     sentAt: v.number()
   })
     .index("by_user", ["userId"])
+    .index("by_user_and_date", ["userId", "dateKey"]),
+
+  /**
+   * Nightly snapshots of each user's full state, written by the
+   * `backups:snapshotAllUsers` internal action via `convex/crons.ts`.
+   *
+   * `payload` is a JSON string of `{ progress, profile, diary, reflections,
+   * intentions, shareSettings, shareGrants }` for that user. Kept as a string
+   * (not a deeply-validated object) so future schema changes don't break old
+   * snapshots — restore is best-effort.
+   *
+   * Retention: 14 days (oldest pruned each run). Adjust in `snapshotAllUsers`.
+   */
+  backups: defineTable({
+    userId: v.id("users"),
+    clerkUserId: v.string(),
+    /** YYYY-MM-DD UTC for the day this snapshot was taken. */
+    dateKey: v.string(),
+    payload: v.string(),
+    createdAt: v.number()
+  })
+    .index("by_user", ["userId"])
     .index("by_user_and_date", ["userId", "dateKey"])
+    .index("by_date", ["dateKey"])
 });
