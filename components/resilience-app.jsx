@@ -114,6 +114,12 @@ function formatProgramLengthLabel(length) {
   return `${length} day${length === 1 ? "" : "s"}`;
 }
 
+/** Header tagline under STOIC AF — always expressed in days (7, 30, 90, …). */
+function formatProgramLengthDayTagline(length) {
+  const n = clampProgramLength(length);
+  return `${n}-day resilience`;
+}
+
 function getRandomId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -3379,7 +3385,7 @@ export default function ResilienceApp() {
                   </div>
                   <div className="min-w-0">
                     <CardTitle>STOIC AF</CardTitle>
-                    <CardDescription>30-day resilience</CardDescription>
+                    <CardDescription>{formatProgramLengthDayTagline(programLength)}</CardDescription>
                   </div>
                 </div>
                 <button
