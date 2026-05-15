@@ -2165,6 +2165,36 @@ export default function ResilienceApp() {
     }
   }, [sharingSettingsQuery]);
 
+  /**
+   * Auto-mint an invite token for legacy accounts that toggled sharing on
+   * before tokens were issued automatically. Without this, the UI shows
+   * "Set NEXT_PUBLIC_APP_URL…" even when the origin is fine — the real
+   * cause is a missing inviteToken in Convex.
+   */
+  const autoInviteMintedRef = useRef(false);
+  useEffect(() => {
+    if (!isSignedIn) return;
+    if (!sharingSettings) return;
+    if (!sharingAppOrigin) return;
+    if (!sharingSettings.enabled) return;
+    if (sharingSettings.inviteUrl) return;
+    if (autoInviteMintedRef.current) return;
+    autoInviteMintedRef.current = true;
+    (async () => {
+      try {
+        const result = await rotateInviteMutation({ appOrigin: sharingAppOrigin });
+        if (result) setSharingSettings(normalizeSharingApiPayload(result));
+      } catch {
+        autoInviteMintedRef.current = false;
+      }
+    })();
+  }, [
+    isSignedIn,
+    sharingSettings,
+    sharingAppOrigin,
+    rotateInviteMutation
+  ]);
+
   const todayDateKey = toDateKey(new Date());
   const programAnchorKey = useMemo(
     () => programProgressAnchorKey(app.diary, app.startDate),
@@ -5094,11 +5124,21 @@ export default function ResilienceApp() {
                           </p>
                         </>
                       ) : (
-                        <p className="text-xs text-amber-800 dark:text-amber-200/90">
-                          Set <span className="font-mono">NEXT_PUBLIC_APP_URL</span> to your site URL (e.g. in Vercel
-                          env or <span className="font-mono">.env.local</span>) so invite links and QR codes can be
-                          generated.
-                        </p>
+                        <div className="space-y-2">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            No invite link yet. Tap below to generate one — your QR code and shareable URL will
+                            appear here.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="emerald"
+                            className="text-xs"
+                            disabled={sharingBusy}
+                            onClick={() => void applySharingPatch({ rotateInviteToken: true })}
+                          >
+                            Generate invite link
+                          </Button>
+                        </div>
                       )}
                     </div>
                   ) : null}

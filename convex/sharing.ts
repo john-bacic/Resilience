@@ -116,13 +116,18 @@ export const updateSettings = mutation({
       const patch: Record<string, unknown> = { updatedAt: now };
       if (args.enabled !== undefined) patch.enabled = args.enabled;
       if (args.shareDisplayName !== undefined) patch.shareDisplayName = args.shareDisplayName.trim();
+      const willBeEnabled = args.enabled ?? existing.enabled;
+      if (willBeEnabled && !existing.inviteToken) {
+        patch.inviteToken = randomInviteToken();
+      }
       await ctx.db.patch(existing._id, patch);
     } else {
+      const enabled = args.enabled ?? false;
       await ctx.db.insert("shareSettings", {
         userId: user._id,
-        enabled: args.enabled ?? false,
+        enabled,
         shareDisplayName: (args.shareDisplayName ?? "").trim(),
-        inviteToken: undefined,
+        inviteToken: enabled ? randomInviteToken() : undefined,
         updatedAt: now
       });
     }
