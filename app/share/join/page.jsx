@@ -95,66 +95,68 @@ function JoinInviteContent() {
   const token = searchParams.get("t");
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
+  const [accepting, setAccepting] = useState(false);
   const { isLoaded: clerkLoaded, userId } = useAuth();
   const acceptInvite = useMutation(api.sharing.acceptInvite);
 
+  /**
+   * Don't auto-accept. Everyone (signed in or not) lands on the sell page;
+   * signed-in viewers tap the CTA to actually run acceptInvite. This way
+   * an existing user who isn't yet connected still gets the value-prop and
+   * an explicit moment-of-consent before being granted access.
+   */
   useEffect(() => {
-    if (!clerkLoaded) return undefined;
+    if (!clerkLoaded) return;
     if (!token?.trim()) {
       setStatus("error");
-      setMessage("This invite link is missing a token. Ask the person who shared for a current link or QR code.");
-      return undefined;
+      setMessage(
+        "This invite link is missing a token. Ask the person who shared for a current link or QR code."
+      );
+      return;
     }
-    if (!userId) {
-      setStatus("auth");
-      setMessage("Sign in (or create an account) with the email you use for this app, then open this link again.");
-      return undefined;
-    }
+    setStatus("pitch");
+  }, [token, clerkLoaded]);
 
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await acceptInvite({ token: token.trim() });
-        if (cancelled) return;
-        if (data?.self) {
-          setStatus("ok");
-          setMessage(
-            "This is your own invite link \u2014 nothing to accept. Open the app and your diary is already yours."
-          );
-          return;
-        }
+  async function handleAccept() {
+    if (!token?.trim()) return;
+    setAccepting(true);
+    try {
+      const data = await acceptInvite({ token: token.trim() });
+      if (data?.self) {
         setStatus("ok");
-        const who = typeof data?.label === "string" && data.label ? data.label : null;
-        if (data?.alreadyAccepted) {
-          setMessage(
-            who
-              ? `You already have access to ${who}'s diary. Open Shared diaries on the home page to view it.`
-              : "You already have access. Open Shared diaries on the home page to view their diary."
-          );
-        } else {
-          setMessage(
-            who
-              ? `Access granted. Open Shared diaries on the home page to view ${who}'s diary.`
-              : "You now have access. Open Shared diaries on the home page to view their diary."
-          );
-        }
-      } catch (error) {
-        if (cancelled) return;
-        setStatus("error");
-        setMessage(extractFriendlyError(error));
+        setMessage(
+          "This is your own invite link — nothing to accept. Open the app and your diary is already yours."
+        );
+        return;
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token, clerkLoaded, userId, acceptInvite]);
+      const who = typeof data?.label === "string" && data.label ? data.label : null;
+      setStatus("ok");
+      if (data?.alreadyAccepted) {
+        setMessage(
+          who
+            ? `You already have access to ${who}'s diary. Open Shared diaries on the home page to view it.`
+            : "You already have access. Open Shared diaries on the home page to view their diary."
+        );
+      } else {
+        setMessage(
+          who
+            ? `Access granted. Open Shared diaries on the home page to view ${who}'s diary.`
+            : "You now have access. Open Shared diaries on the home page to view their diary."
+        );
+      }
+    } catch (error) {
+      setStatus("error");
+      setMessage(extractFriendlyError(error));
+    } finally {
+      setAccepting(false);
+    }
+  }
 
   const returnTo = `/share/join?t=${encodeURIComponent(token || "")}`;
   const signUpHref = `/sign-up?redirect_url=${encodeURIComponent(returnTo)}`;
   const signInHref = `/sign-in?redirect_url=${encodeURIComponent(returnTo)}`;
 
-  if (status === "auth") {
+  if (status === "pitch") {
     return (
       <div className="relative isolate min-h-[80vh] bg-gradient-to-b from-slate-50 via-white to-emerald-50/40 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30">
         <div
@@ -323,25 +325,42 @@ function JoinInviteContent() {
             like this one.
           </p>
 
-          {/* ===== CTAs ===== */}
+          {/* ===== CTAs (auth-state aware) ===== */}
           <div className="mt-5 flex flex-col gap-2">
-            <Link
-              href={signUpHref}
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
-            >
-              Sign up &amp; accept invite
-            </Link>
-            <Link
-              href={signInHref}
-              className="text-center text-xs text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
-            >
-              I already have an account
-            </Link>
+            {userId ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleAccept}
+                  disabled={accepting}
+                  className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 dark:focus-visible:ring-offset-slate-950"
+                >
+                  {accepting ? "Accepting…" : "Accept invite & view their diary"}
+                </button>
+                <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">
+                  Signed in — one tap and you&apos;re in. Their diary stays read-only to you.
+                </p>
+              </>
+            ) : (
+              <>
+                <Link
+                  href={signUpHref}
+                  className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
+                >
+                  Sign up &amp; accept invite
+                </Link>
+                <Link
+                  href={signInHref}
+                  className="text-center text-xs text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
+                >
+                  I already have an account
+                </Link>
+                <p className="mt-1 text-center text-[11px] text-slate-400 dark:text-slate-500">
+                  After signing up you&apos;ll land right back here — access granted automatically.
+                </p>
+              </>
+            )}
           </div>
-
-          <p className="mt-3 text-center text-[11px] text-slate-400 dark:text-slate-500">
-            After signing up you&apos;ll land right back here — access granted automatically.
-          </p>
         </main>
       </div>
     );
