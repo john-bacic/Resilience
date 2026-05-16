@@ -6,24 +6,12 @@ import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import StoicMarkIcon from "@/components/stoic-mark-icon";
 
 const APP_HIGHLIGHTS = [
-  {
-    title: "Rehearse hard moments",
-    body: "Daily \u201Cwhat could go wrong\u201D scenarios pulled from real life — work, family, money, health — so you stop being blindsided."
-  },
-  {
-    title: "Three-step practice",
-    body: "Facts vs Story \u2192 Control filter \u2192 Chosen response. A short journaling flow that turns reactions into intentional moves."
-  },
-  {
-    title: "See your patterns",
-    body: "Mood shifts, recurring stories, and lessons surface over 30 days (or longer) so progress is visible, not just felt."
-  },
-  {
-    title: "Private by default",
-    body: "Your diary is yours. Sharing only happens when you generate an invite link or QR \u2014 like the one that brought you here."
-  }
+  "Rehearse what could go wrong",
+  "Journal your reaction in 3 steps",
+  "See your patterns over time"
 ];
 
 function JoinInviteContent() {
@@ -77,49 +65,48 @@ function JoinInviteContent() {
 
   if (status === "auth") {
     return (
-      <div className="mx-auto max-w-xl px-6 py-10 sm:py-14">
-        <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/80 sm:p-8">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
-            You&apos;ve been invited
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold leading-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            Welcome to STOIC AF
-          </h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Someone shared their resilience diary with you. Create a free account to read it and
-            (if you want) start your own 30-day practice.
+      <div className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center px-6 py-10">
+        <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+          <div className="flex items-center gap-3">
+            <StoicMarkIcon className="h-9 w-8 text-slate-900 dark:text-slate-100" />
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold leading-tight text-slate-900 dark:text-slate-100">
+                STOIC AF
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">30-day resilience</p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-sm text-emerald-700 dark:text-emerald-300">
+            You&apos;ve been invited to view a diary.
           </p>
 
-          <ul className="mt-6 space-y-3">
+          <ul className="mt-3 space-y-1.5 text-sm text-slate-700 dark:text-slate-300">
             {APP_HIGHLIGHTS.map((h) => (
-              <li
-                key={h.title}
-                className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/60"
-              >
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h.title}</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">{h.body}</p>
+              <li key={h} className="flex items-start gap-2">
+                <span
+                  className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                  aria-hidden
+                />
+                <span>{h}</span>
               </li>
             ))}
           </ul>
 
-          <div className="mt-7 flex flex-col gap-2">
+          <div className="mt-6 flex flex-col gap-2">
             <Link
               href={signUpHref}
               className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-emerald-900/20 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
             >
-              Create account &amp; accept invite
+              Sign up
             </Link>
             <Link
               href={signInHref}
-              className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              className="text-center text-xs text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
             >
               I already have an account
             </Link>
           </div>
-
-          <p className="mt-4 text-center text-[11px] text-slate-500 dark:text-slate-400">
-            After signing up you&apos;ll come back here automatically and access will be granted.
-          </p>
         </div>
       </div>
     );
