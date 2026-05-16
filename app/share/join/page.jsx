@@ -9,6 +9,29 @@ import { api } from "@/convex/_generated/api";
 import StoicMarkIcon from "@/components/stoic-mark-icon";
 
 /**
+ * Convex throws `ConvexError({ code, message })` for user-visible errors and a
+ * generic `Server Error` for unhandled ones (production hides .message). Pull
+ * the friendly text whenever it's there; fall back to a kind generic line.
+ */
+function extractFriendlyError(error) {
+  const data = error?.data;
+  if (data && typeof data === "object" && typeof data.message === "string" && data.message) {
+    return data.message;
+  }
+  if (typeof data === "string" && data) {
+    return data;
+  }
+  const msg = error?.message;
+  if (typeof msg === "string" && msg) {
+    if (/Server Error/i.test(msg) || /\[CONVEX/i.test(msg)) {
+      return "Something went wrong accepting this invite. Try again, or ask the sender for a fresh link.";
+    }
+    return msg;
+  }
+  return "Could not accept this invite. Try again, or ask the sender for a fresh link.";
+}
+
+/**
  * Render text with **double-asterisk** segments wrapped in <strong> so longer
  * paragraphs are skimmable. Strong segments inherit color and get a slightly
  * heavier weight + tighter tracking so the keywords pop without a color shift.
@@ -93,17 +116,32 @@ function JoinInviteContent() {
       try {
         const data = await acceptInvite({ token: token.trim() });
         if (cancelled) return;
+        if (data?.self) {
+          setStatus("ok");
+          setMessage(
+            "This is your own invite link \u2014 nothing to accept. Open the app and your diary is already yours."
+          );
+          return;
+        }
         setStatus("ok");
-        setMessage(
-          typeof data?.label === "string" && data.label
-            ? `You can open ${data.label}'s diary from Shared diaries below.`
-            : "You now have access. Open Shared diaries on the home page to view their diary."
-        );
+        const who = typeof data?.label === "string" && data.label ? data.label : null;
+        if (data?.alreadyAccepted) {
+          setMessage(
+            who
+              ? `You already have access to ${who}'s diary. Open Shared diaries on the home page to view it.`
+              : "You already have access. Open Shared diaries on the home page to view their diary."
+          );
+        } else {
+          setMessage(
+            who
+              ? `Access granted. Open Shared diaries on the home page to view ${who}'s diary.`
+              : "You now have access. Open Shared diaries on the home page to view their diary."
+          );
+        }
       } catch (error) {
         if (cancelled) return;
-        const msg = error instanceof Error ? error.message : "Could not accept this invite.";
         setStatus("error");
-        setMessage(msg);
+        setMessage(extractFriendlyError(error));
       }
     })();
 

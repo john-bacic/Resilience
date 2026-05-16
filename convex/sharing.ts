@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 import { getCurrentUserOrNull, requireCurrentUser } from "./lib/auth";
@@ -253,26 +253,71 @@ export const grantViewerByEmail = action({
 /**
  * Viewer accepts an invite token. Resolves token to owner, then creates the
  * grant (owner → viewer). Token must belong to an enabled-sharing owner.
+ *
+ * Self-heals: if the viewer has signed in via Clerk but never triggered
+ * `users.store` (e.g. they came directly from a share QR), we stub their
+ * `users` row in-place instead of failing with a generic Server Error.
+ *
+ * Uses `ConvexError` so the friendly message survives production (plain
+ * `Error.message` is masked as "Server Error" by the Convex deploy).
  */
 export const acceptInvite = mutation({
   args: { token: v.string() },
-  returns: v.object({ ok: v.boolean(), ownerClerkUserId: v.string(), label: v.string() }),
+  returns: v.object({
+    ok: v.boolean(),
+    ownerClerkUserId: v.string(),
+    label: v.string(),
+    self: v.optional(v.boolean()),
+    alreadyAccepted: v.optional(v.boolean())
+  }),
   handler: async (ctx, args) => {
-    const viewer = await requireCurrentUser(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError({
+        code: "unauthenticated",
+        message: "Sign in to accept this invite."
+      });
+    }
+    const viewer = await ensureUserRowByClerkId(ctx, identity.subject, {
+      displayName: identity.name ?? undefined,
+      email: identity.email ?? undefined
+    });
+
     const token = args.token.trim();
-    if (!token) throw new Error("Missing token");
+    if (!token) {
+      throw new ConvexError({
+        code: "missing_token",
+        message: "This invite link is missing a token. Ask the sender for a fresh link."
+      });
+    }
 
     const settings = await ctx.db
       .query("shareSettings")
       .withIndex("by_invite_token", (q) => q.eq("inviteToken", token))
       .unique();
     if (!settings || !settings.enabled) {
-      throw new Error("Invalid or expired invite link.");
+      throw new ConvexError({
+        code: "invalid_invite",
+        message:
+          "This invite is no longer active. The sender may have rotated their link or turned off sharing."
+      });
     }
     const owner = await ctx.db.get(settings.userId);
-    if (!owner) throw new Error("Invalid invite link.");
+    if (!owner) {
+      throw new ConvexError({
+        code: "invalid_invite",
+        message: "This invite link is invalid."
+      });
+    }
     if (owner.clerkUserId === viewer.clerkUserId) {
-      throw new Error("That invite is for your own account.");
+      const selfLabel =
+        owner.displayName?.trim() || owner.email?.trim() || "you";
+      return {
+        ok: true,
+        self: true,
+        ownerClerkUserId: owner.clerkUserId,
+        label: selfLabel
+      };
     }
 
     const existing = await ctx.db
@@ -281,6 +326,7 @@ export const acceptInvite = mutation({
         q.eq("ownerUserId", owner._id).eq("viewerUserId", viewer._id)
       )
       .unique();
+    const alreadyAccepted = Boolean(existing);
     if (!existing) {
       await ctx.db.insert("shareGrants", {
         ownerUserId: owner._id,
@@ -290,7 +336,7 @@ export const acceptInvite = mutation({
     }
 
     const label = (owner.displayName?.trim() || owner.email?.trim() || `User ${owner.clerkUserId.slice(0, 8)}…`);
-    return { ok: true, ownerClerkUserId: owner.clerkUserId, label };
+    return { ok: true, ownerClerkUserId: owner.clerkUserId, label, alreadyAccepted };
   }
 });
 
