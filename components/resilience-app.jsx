@@ -346,6 +346,141 @@ function progressFieldsFromDiary(diary, programLength = DEFAULT_PROGRAM_LENGTH) 
   };
 }
 
+/**
+ * Build the full “what happened” breakdown for a completion badge.
+ *
+ * The completion record itself only stores AI overview/patterns + counts, so we
+ * derive everything else from the live diary/reflections, scoped to entries
+ * created on or before `completion.completedAt` (so old badges keep showing the
+ * journey that earned them, even after the user logs more later).
+ */
+function buildCompletionBreakdown(completion, diary, reflections, programLength) {
+  const safeDiary = Array.isArray(diary) ? diary : [];
+  const safeReflections = Array.isArray(reflections) ? reflections : [];
+  const length = clampProgramLength(completion?.programLength ?? programLength ?? DEFAULT_PROGRAM_LENGTH);
+  const completedAtMs = completion?.completedAt ? Date.parse(completion.completedAt) : null;
+  const cutoffMs = Number.isFinite(completedAtMs) ? completedAtMs : null;
+
+  const inScope = (createdAt) => {
+    if (cutoffMs == null) return true;
+    const t = createdAt ? Date.parse(createdAt) : null;
+    if (!Number.isFinite(t)) return true;
+    return t <= cutoffMs;
+  };
+
+  const scopedDiary = safeDiary.filter((e) => inScope(e?.createdAt));
+  const scopedReflections = safeReflections.filter((r) => inScope(r?.createdAt));
+
+  const anchorKey = earliestDiaryDateKey(scopedDiary);
+
+  const orderedOldestFirst = [...scopedDiary].sort((a, b) => {
+    const ka = diaryEntryDateKey(a) || "";
+    const kb = diaryEntryDateKey(b) || "";
+    if (ka !== kb) return ka.localeCompare(kb);
+    const ta = a?.createdAt ? Date.parse(a.createdAt) : 0;
+    const tb = b?.createdAt ? Date.parse(b.createdAt) : 0;
+    return ta - tb;
+  });
+
+  const stepCounts = { step1: 0, step2: 0, step3: 0 };
+  const sourceCounts = { log: 0, reflection: 0, other: 0 };
+  const moodBeforeCounts = {};
+  const moodAfterCounts = {};
+  const moodDeltas = [];
+  const storyCounts = {};
+  const lessonCounts = {};
+  const scenarioCounts = {};
+
+  for (const entry of scopedDiary) {
+    for (const step of entry?.triggeredSteps || []) {
+      if (step in stepCounts) stepCounts[step] += 1;
+    }
+    const src = entry?.source;
+    if (src === "log") sourceCounts.log += 1;
+    else if (src === "reflection") sourceCounts.reflection += 1;
+    else sourceCounts.other += 1;
+
+    const before = normalizeMoodId(entry?.moodBefore);
+    if (before) moodBeforeCounts[before] = (moodBeforeCounts[before] || 0) + 1;
+    const after = normalizeMoodId(entry?.moodAfter);
+    if (after) moodAfterCounts[after] = (moodAfterCounts[after] || 0) + 1;
+
+    const a = moodOrdinalUnified(entry?.moodBefore);
+    const b = moodOrdinalUnified(entry?.moodAfter);
+    if (a != null && b != null) moodDeltas.push(b - a);
+
+    const story = String(entry?.story || "").trim();
+    if (story) storyCounts[story] = (storyCounts[story] || 0) + 1;
+    const lesson = String(entry?.lesson || "").trim();
+    if (lesson) lessonCounts[lesson] = (lessonCounts[lesson] || 0) + 1;
+    const scenario = String(entry?.scenario || "").trim();
+    if (scenario) scenarioCounts[scenario] = (scenarioCounts[scenario] || 0) + 1;
+  }
+
+  const distinctDays = new Set(scopedDiary.map((e) => diaryEntryDateKey(e)).filter(Boolean)).size;
+
+  let avgDelta = null;
+  let biggestUp = null;
+  let biggestDown = null;
+  if (moodDeltas.length > 0) {
+    const total = moodDeltas.reduce((sum, d) => sum + d, 0);
+    avgDelta = total / moodDeltas.length;
+    for (const d of moodDeltas) {
+      if (biggestUp == null || d > biggestUp) biggestUp = d;
+      if (biggestDown == null || d < biggestDown) biggestDown = d;
+    }
+  }
+
+  const dateSpan = (() => {
+    if (!orderedOldestFirst.length) {
+      return cutoffMs
+        ? { startKey: null, endKey: toDateKey(new Date(cutoffMs)), days: 0 }
+        : { startKey: null, endKey: null, days: 0 };
+    }
+    const startKey = diaryEntryDateKey(orderedOldestFirst[0]) || null;
+    const endKey =
+      diaryEntryDateKey(orderedOldestFirst[orderedOldestFirst.length - 1]) ||
+      (cutoffMs ? toDateKey(new Date(cutoffMs)) : null);
+    let days = null;
+    if (startKey && endKey) {
+      const a = new Date(`${startKey}T00:00:00`);
+      const b = new Date(`${endKey}T00:00:00`);
+      days = Math.floor((b - a) / 86400000) + 1;
+    }
+    return { startKey, endKey, days };
+  })();
+
+  const topN = (counts, n) =>
+    Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n);
+
+  return {
+    programLength: length,
+    completedAt: completion?.completedAt || null,
+    cutoffMs,
+    anchorKey,
+    entries: orderedOldestFirst,
+    entryCount: orderedOldestFirst.length,
+    distinctDays,
+    reflectionCount: scopedReflections.length,
+    sourceCounts,
+    stepCounts,
+    moodBeforeTop: topN(moodBeforeCounts, 3),
+    moodAfterTop: topN(moodAfterCounts, 3),
+    moodDeltas: {
+      count: moodDeltas.length,
+      avgDelta,
+      biggestUp,
+      biggestDown
+    },
+    topStories: topN(storyCounts, 3),
+    topLessons: topN(lessonCounts, 3),
+    topScenarios: topN(scenarioCounts, 3),
+    dateSpan
+  };
+}
+
 /** Newest calendar day first (logged date / entry date); same day → most recently created first. */
 function sortDiaryEntriesByCalendarNewestFirst(entries) {
   if (!Array.isArray(entries)) return [];
@@ -2523,6 +2658,21 @@ export default function ResilienceApp() {
   function closeCelebration() {
     setCelebrationOpen(false);
   }
+
+  /**
+   * Full-journey breakdown for the currently open completion badge. Derived
+   * live so legacy badges (saved before we tracked deeper stats) still show
+   * a proper play-by-play of what was logged.
+   */
+  const activeCompletionBreakdown = useMemo(() => {
+    if (!activeCompletion) return null;
+    return buildCompletionBreakdown(
+      activeCompletion,
+      app.diary,
+      app.reflections,
+      programLength
+    );
+  }, [activeCompletion, app.diary, app.reflections, programLength]);
   const diaryStats = useMemo(() => {
     const total = app.diary.length;
 
@@ -4380,7 +4530,7 @@ export default function ResilienceApp() {
                     Diary entries
                   </p>
                   <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                    {activeCompletion?.diaryCount ?? app.diary.length}
+                    {activeCompletionBreakdown?.entryCount ?? activeCompletion?.diaryCount ?? app.diary.length}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-center dark:border-slate-700 dark:bg-slate-900/70">
@@ -4388,10 +4538,39 @@ export default function ResilienceApp() {
                     Reflections
                   </p>
                   <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                    {activeCompletion?.reflectionCount ?? app.reflections.length}
+                    {activeCompletionBreakdown?.reflectionCount ?? activeCompletion?.reflectionCount ?? app.reflections.length}
                   </p>
                 </div>
               </div>
+
+              {activeCompletionBreakdown?.dateSpan?.startKey ? (
+                <div className="rounded-2xl border border-slate-200 bg-white/70 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+                  <span className="font-medium text-slate-800 dark:text-slate-100">Journey window: </span>
+                  {new Date(`${activeCompletionBreakdown.dateSpan.startKey}T00:00:00`).toLocaleDateString([], {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric"
+                  })}
+                  {" → "}
+                  {activeCompletionBreakdown.dateSpan.endKey
+                    ? new Date(`${activeCompletionBreakdown.dateSpan.endKey}T00:00:00`).toLocaleDateString([], {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric"
+                      })
+                    : "today"}
+                  {activeCompletionBreakdown.dateSpan.days != null
+                    ? ` · ${activeCompletionBreakdown.dateSpan.days} calendar day${
+                        activeCompletionBreakdown.dateSpan.days === 1 ? "" : "s"
+                      }`
+                    : ""}
+                  {activeCompletionBreakdown.distinctDays > 0
+                    ? ` · ${activeCompletionBreakdown.distinctDays} logged day${
+                        activeCompletionBreakdown.distinctDays === 1 ? "" : "s"
+                      }`
+                    : ""}
+                </div>
+              ) : null}
 
               {celebrationLoading ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
@@ -4402,7 +4581,7 @@ export default function ResilienceApp() {
                   {activeCompletion?.overview ? (
                     <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-4 dark:border-emerald-700/60 dark:bg-emerald-950/25">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
-                        What you've learned
+                        What you&apos;ve learned
                       </p>
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-200">
                         {activeCompletion.overview}
@@ -4430,6 +4609,305 @@ export default function ResilienceApp() {
                   ) : null}
                 </>
               )}
+
+              {activeCompletionBreakdown && activeCompletionBreakdown.entryCount > 0 ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Steps practiced
+                      </p>
+                      <ul className="mt-2 space-y-1.5 text-sm text-slate-700 dark:text-slate-300">
+                        <li className="flex items-center justify-between gap-3">
+                          <span>Facts vs Story</span>
+                          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                            {activeCompletionBreakdown.stepCounts.step1}
+                          </span>
+                        </li>
+                        <li className="flex items-center justify-between gap-3">
+                          <span>Control filter</span>
+                          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                            {activeCompletionBreakdown.stepCounts.step2}
+                          </span>
+                        </li>
+                        <li className="flex items-center justify-between gap-3">
+                          <span>Chosen response</span>
+                          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                            {activeCompletionBreakdown.stepCounts.step3}
+                          </span>
+                        </li>
+                      </ul>
+                      <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        Counts across {activeCompletionBreakdown.entryCount} entr
+                        {activeCompletionBreakdown.entryCount === 1 ? "y" : "ies"} in this window.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Mood pulse
+                      </p>
+                      {activeCompletionBreakdown.moodDeltas.count > 0 ? (
+                        <div className="mt-2 space-y-1.5 text-sm text-slate-700 dark:text-slate-300">
+                          <p>
+                            Avg shift:{" "}
+                            <span className="font-mono text-emerald-700 dark:text-emerald-300">
+                              {activeCompletionBreakdown.moodDeltas.avgDelta >= 0 ? "+" : ""}
+                              {activeCompletionBreakdown.moodDeltas.avgDelta.toFixed(1)}
+                            </span>
+                            <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
+                              over {activeCompletionBreakdown.moodDeltas.count} pair
+                              {activeCompletionBreakdown.moodDeltas.count === 1 ? "" : "s"}
+                            </span>
+                          </p>
+                          {activeCompletionBreakdown.moodDeltas.biggestUp != null ? (
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              Biggest lift: +{activeCompletionBreakdown.moodDeltas.biggestUp}
+                              {activeCompletionBreakdown.moodDeltas.biggestDown != null
+                                ? `, biggest dip: ${activeCompletionBreakdown.moodDeltas.biggestDown}`
+                                : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          No mood before/after pairs were logged in this window.
+                        </p>
+                      )}
+                      {activeCompletionBreakdown.moodBeforeTop.length > 0 ||
+                      activeCompletionBreakdown.moodAfterTop.length > 0 ? (
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                          <div>
+                            <p className="font-semibold uppercase tracking-wide">Before</p>
+                            <ul className="mt-1 space-y-0.5">
+                              {activeCompletionBreakdown.moodBeforeTop.map(([id, c]) => (
+                                <li key={`mb-${id}`}>
+                                  {formatMoodLabelEmojiChunk(id)} · {c}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="font-semibold uppercase tracking-wide">After</p>
+                            <ul className="mt-1 space-y-0.5">
+                              {activeCompletionBreakdown.moodAfterTop.map(([id, c]) => (
+                                <li key={`ma-${id}`}>
+                                  {formatMoodLabelEmojiChunk(id)} · {c}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {activeCompletionBreakdown.topScenarios.length > 0 ||
+                  activeCompletionBreakdown.topStories.length > 0 ||
+                  activeCompletionBreakdown.topLessons.length > 0 ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Recurring threads
+                      </p>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                        {activeCompletionBreakdown.topScenarios.length > 0 ? (
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Scenarios</p>
+                            <ul className="mt-1 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+                              {activeCompletionBreakdown.topScenarios.map(([text, c]) => (
+                                <li key={`sc-${text}`} className="leading-snug">
+                                  <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">×{c}</span>{" "}
+                                  {text}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {activeCompletionBreakdown.topStories.length > 0 ? (
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Stories</p>
+                            <ul className="mt-1 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+                              {activeCompletionBreakdown.topStories.map(([text, c]) => (
+                                <li key={`st-${text}`} className="leading-snug">
+                                  <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">×{c}</span>{" "}
+                                  {text}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {activeCompletionBreakdown.topLessons.length > 0 ? (
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Lessons</p>
+                            <ul className="mt-1 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+                              {activeCompletionBreakdown.topLessons.map(([text, c]) => (
+                                <li key={`le-${text}`} className="leading-snug">
+                                  <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">×{c}</span>{" "}
+                                  {text}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-2xl border border-slate-200 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-900/60">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Every entry, day by day
+                      </p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                        Tap a row to expand
+                      </p>
+                    </div>
+                    <ul className="mt-3 space-y-2">
+                      {[...activeCompletionBreakdown.entries].reverse().map((entry) => {
+                        const dateKey = diaryEntryDateKey(entry);
+                        const day = activeCompletionBreakdown.anchorKey
+                          ? programDayForEntry(
+                              activeCompletionBreakdown.anchorKey,
+                              dateKey,
+                              activeCompletionBreakdown.programLength
+                            )
+                          : entry?.day || null;
+                        const sourceLabel =
+                          entry?.source === "reflection"
+                            ? "Morning reflection"
+                            : entry?.source === "log"
+                              ? "Log"
+                              : "Entry";
+                        const title = String(entry?.title || entry?.scenario || "").trim() || "Untitled entry";
+                        const hasMoodPair = entry?.moodBefore != null || entry?.moodAfter != null;
+                        return (
+                          <li key={entry?.id}>
+                            <details className="group rounded-2xl border border-slate-200 bg-white/90 transition open:border-emerald-300 open:bg-emerald-50/60 dark:border-slate-700 dark:bg-slate-900/70 dark:open:border-emerald-600 dark:open:bg-emerald-950/30">
+                              <summary className="flex cursor-pointer list-none items-start gap-2 rounded-2xl p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:focus-visible:ring-emerald-500">
+                                <ChevronDown
+                                  className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-180 dark:text-slate-500"
+                                  aria-hidden
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    {day ? (
+                                      <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:bg-emerald-900/55 dark:text-emerald-200">
+                                        Day {day}
+                                      </span>
+                                    ) : null}
+                                    <span className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                      {sourceLabel}
+                                    </span>
+                                    {dateKey ? (
+                                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                        {new Date(`${dateKey}T00:00:00`).toLocaleDateString([], {
+                                          month: "short",
+                                          day: "numeric"
+                                        })}
+                                      </span>
+                                    ) : null}
+                                    {hasMoodPair ? (
+                                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                        {formatMoodLabelEmojiPairLine(entry.moodBefore, entry.moodAfter)}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                                    {title}
+                                  </p>
+                                </div>
+                              </summary>
+                              <div className="space-y-2 border-t border-slate-200 px-3 py-3 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                                {entry?.scenario && entry.scenario !== title ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Scenario:</span>{" "}
+                                    {entry.scenario}
+                                  </p>
+                                ) : null}
+                                {entry?.reaction ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Reaction:</span>{" "}
+                                    {entry.reaction}
+                                  </p>
+                                ) : null}
+                                {entry?.fact ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Facts:</span>{" "}
+                                    {entry.fact}
+                                  </p>
+                                ) : null}
+                                {entry?.story ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Story:</span>{" "}
+                                    {entry.story}
+                                  </p>
+                                ) : null}
+                                {entry?.outsideControl ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Outside control:</span>{" "}
+                                    {entry.outsideControl}
+                                  </p>
+                                ) : null}
+                                {entry?.insideControl ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Inside control:</span>{" "}
+                                    {entry.insideControl}
+                                  </p>
+                                ) : null}
+                                {entry?.chosenResponse ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Chosen response:</span>{" "}
+                                    {entry.chosenResponse}
+                                  </p>
+                                ) : null}
+                                {entry?.lesson ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Lesson:</span>{" "}
+                                    {entry.lesson}
+                                  </p>
+                                ) : null}
+                                {entry?.intention ? (
+                                  <p>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">Intention:</span>{" "}
+                                    {entry.intention}
+                                  </p>
+                                ) : null}
+                                {Array.isArray(entry?.triggeredSteps) && entry.triggeredSteps.length > 0 ? (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    Steps:{" "}
+                                    {entry.triggeredSteps
+                                      .map((s) =>
+                                        s === "step1"
+                                          ? "Facts vs Story"
+                                          : s === "step2"
+                                            ? "Control filter"
+                                            : s === "step3"
+                                              ? "Chosen response"
+                                              : s
+                                      )
+                                      .join(" · ")}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </details>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </>
+              ) : !celebrationLoading && activeCompletion ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
+                  No diary entries are stored on this device for the window ending{" "}
+                  {activeCompletion.completedAt
+                    ? new Date(activeCompletion.completedAt).toLocaleDateString([], {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric"
+                      })
+                    : "this badge"}
+                  . The summary above is still based on what was logged at the time.
+                </div>
+              ) : null}
 
               <div className="flex justify-end pt-2">
                 <Button onClick={closeCelebration}>Close</Button>
