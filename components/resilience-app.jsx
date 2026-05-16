@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import QRCode from "react-qr-code";
 import StoicMarkIcon from "./stoic-mark-icon";
+import { renderCompletionShareBlob, shareOrDownloadBlob } from "@/lib/share-card";
 
 const SCENARIOS = [
   "Someone does not reply to your message.",
@@ -1864,6 +1865,8 @@ export default function ResilienceApp() {
   const [celebrationOpen, setCelebrationOpen] = useState(false);
   const [celebrationLoading, setCelebrationLoading] = useState(false);
   const [activeCompletion, setActiveCompletion] = useState(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareStatus, setShareStatus] = useState(null);
   const celebrationTriggeredRef = useRef(false);
   const unshakenVideoRef = useRef(null);
   const diaryEditModalWasOpenRef = useRef(false);
@@ -2630,11 +2633,49 @@ export default function ResilienceApp() {
     if (!completion) return;
     setActiveCompletion(completion);
     setCelebrationLoading(false);
+    setShareStatus(null);
     setCelebrationOpen(true);
   }
 
   function closeCelebration() {
     setCelebrationOpen(false);
+    setShareStatus(null);
+  }
+
+  /**
+   * Render & share the completion-badge card. Pure client-side canvas →
+   * Web Share API on mobile, PNG download fallback elsewhere. `shareStatus`
+   * is shown as a small inline pill next to the Share button.
+   */
+  async function shareActiveCompletion() {
+    if (!activeCompletion || shareBusy) return;
+    setShareBusy(true);
+    setShareStatus(null);
+    try {
+      const breakdown = activeCompletionBreakdown;
+      const url =
+        (typeof window !== "undefined" && window.location && window.location.origin) ||
+        "unshaken.vercel.app";
+      const blob = await renderCompletionShareBlob({
+        completion: activeCompletion,
+        breakdown,
+        url
+      });
+      const fileName = `stoic-af-${activeCompletion.programLength || "completion"}-days.png`;
+      const result = await shareOrDownloadBlob(blob, fileName);
+      if (result === "shared") setShareStatus("Shared.");
+      else if (result === "downloaded") setShareStatus("Saved to downloads.");
+      else if (result === "cancelled") setShareStatus(null);
+      else setShareStatus("Couldn’t share — try again.");
+    } catch (err) {
+      console.error("[share-card]", err);
+      setShareStatus("Couldn’t build the card — try again.");
+    } finally {
+      setShareBusy(false);
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => setShareStatus(null), 4500);
+      }
+    }
   }
 
   /**
@@ -4887,7 +4928,22 @@ export default function ResilienceApp() {
                 </div>
               ) : null}
 
-              <div className="flex justify-end pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="emerald"
+                    className="gap-2 px-3 py-2 text-sm"
+                    onClick={() => void shareActiveCompletion()}
+                    disabled={shareBusy}
+                  >
+                    <Share2 className="h-4 w-4" />
+                    {shareBusy ? "Building card…" : "Share card"}
+                  </Button>
+                  {shareStatus ? (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{shareStatus}</span>
+                  ) : null}
+                </div>
                 <Button onClick={closeCelebration}>Close</Button>
               </div>
             </CardContent>
