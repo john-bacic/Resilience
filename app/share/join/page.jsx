@@ -8,41 +8,63 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import StoicMarkIcon from "@/components/stoic-mark-icon";
 
+/**
+ * Render text with **double-asterisk** segments wrapped in <strong> so longer
+ * paragraphs are skimmable. Strong segments inherit color and get a slightly
+ * heavier weight + tighter tracking so the keywords pop without a color shift.
+ */
+function renderEmphasized(text) {
+  const parts = String(text).split(/(\*\*[^*]+\*\*)/g);
+  return parts
+    .filter((p) => p.length > 0)
+    .map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return (
+          <strong key={i} className="font-semibold text-slate-900 dark:text-white">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+}
+
 /** The four-step "invincibility protocol" from the founder video, styled as
  *  the in-app AI feedback rows: small uppercase eyebrow + bold lead + one-line
- *  unlock. Each step is a numbered emerald card on the landing page. */
+ *  unlock. Each step is a numbered emerald card on the landing page.
+ *  `**keyword**` segments are bolded by renderEmphasized for skimmability. */
 const PROTOCOL_STEPS = [
   {
     eyebrow: "Step 1",
     title: "Separate fact from story",
     body:
-      "\u201CThey said words\u201D vs \u201Cthey think I\u2019m worthless.\u201D You only ever react to the story. STOIC AF makes you split them in writing \u2014 the spiral collapses."
+      "\u201C**They said words**\u201D vs \u201C**they think I\u2019m worthless**.\u201D You only ever react to **the story**. STOIC AF makes you **split them in writing** \u2014 the spiral collapses."
   },
   {
     eyebrow: "Step 2",
     title: "Apply the control filter",
     body:
-      "If you can\u2019t control it, it doesn\u2019t exist in your reality. Other people\u2019s opinions, traffic, weather, the past \u2014 stop spending energy on the irrelevant."
+      "If you **can\u2019t control it**, it **doesn\u2019t exist** in your reality. Other people\u2019s opinions, traffic, weather, the past \u2014 **stop spending energy on the irrelevant**."
   },
   {
     eyebrow: "Step 3",
     title: "Own your response, not the event",
     body:
-      "You can\u2019t control what happens. You decide what it means. \u201CI\u2019m not good enough\u201D or \u201Cwrong fit, next one\u201D \u2014 same event, two different lives."
+      "You can\u2019t control what happens. **You decide what it means**. \u201CI\u2019m not good enough\u201D or \u201Cwrong fit, next one\u201D \u2014 **same event, two different lives**."
   },
   {
     eyebrow: "Step 4",
     title: "Rehearse what could go wrong",
     body:
-      "One short scenario every morning, tuned to your life. By the time it actually happens, you\u2019ve already survived the worst version in your head \u2014 it lands as a 4, not a 9."
+      "One short scenario every morning, **tuned to your life**. By the time it actually happens, you\u2019ve already survived the worst version in your head \u2014 it lands as a **4, not a 9**."
   }
 ];
 
 const PATTERN_BENEFITS = [
-  "Your recurring triggers \u2014 the situations that hit you, not the average person.",
-  "The stories your mind reaches for, ranked by how often you write them down.",
-  "Which step actually moves your mood the most \u2014 your own protocol, not generic advice.",
-  "How fast you bounce back over weeks, in your own data, not vibes."
+  "**Your recurring triggers** \u2014 the situations that hit you, not the average person.",
+  "**The stories your mind reaches for**, ranked by how often you write them down.",
+  "**Which step actually moves your mood** the most \u2014 your own protocol, not generic advice.",
+  "**How fast you bounce back** over weeks, in your own data, not vibes."
 ];
 
 function JoinInviteContent() {
@@ -123,9 +145,10 @@ function JoinInviteContent() {
               <span className="text-emerald-700 dark:text-emerald-300">by anything or anyone.</span>
             </h1>
             <p className="mt-3 text-[15px] leading-7 text-slate-600 dark:text-slate-300">
-              The mental framework Marcus Aurelius wrote about and Navy SEALs train for 12 weeks
-              — distilled into a 5-minute daily practice. Someone you know is doing it. They
-              shared their diary so you can see what it looks like.
+              The mental framework <strong className="font-semibold text-slate-900 dark:text-white">Marcus Aurelius</strong>{" "}
+              wrote about and <strong className="font-semibold text-slate-900 dark:text-white">Navy SEALs train for 12 weeks</strong>{" "}
+              — distilled into a <strong className="font-semibold text-slate-900 dark:text-white">5-minute daily practice</strong>.
+              Someone you know is doing it. They shared their diary so you can see what it looks like.
             </p>
           </section>
 
@@ -138,9 +161,11 @@ function JoinInviteContent() {
               </p>
             </div>
             <p className="mt-2 text-[15px] leading-7 text-slate-800 dark:text-slate-100">
-              Someone criticizes you, you defend. Someone rejects you, you spiral. Someone
-              disrespects you, you explode. You&apos;re giving strangers a remote control to your
-              emotional state.
+              Someone criticizes you, <strong className="font-semibold text-slate-900 dark:text-white">you defend</strong>.
+              Someone rejects you, <strong className="font-semibold text-slate-900 dark:text-white">you spiral</strong>.
+              Someone disrespects you, <strong className="font-semibold text-slate-900 dark:text-white">you explode</strong>.
+              You&apos;re giving strangers a{" "}
+              <strong className="font-semibold text-slate-900 dark:text-white">remote control to your emotional state</strong>.
             </p>
             <div className="mt-3 flex items-baseline gap-3 rounded-xl border border-emerald-200/70 bg-white/70 px-3 py-2.5 dark:border-emerald-700/55 dark:bg-slate-900/55">
               <span className="text-2xl font-bold tracking-tight text-emerald-700 dark:text-emerald-300">
@@ -190,7 +215,7 @@ function JoinInviteContent() {
                       {s.title}
                     </p>
                     <p className="mt-1.5 text-sm leading-6 text-slate-700 dark:text-slate-200">
-                      {s.body}
+                      {renderEmphasized(s.body)}
                     </p>
                   </div>
                 </div>
@@ -207,8 +232,8 @@ function JoinInviteContent() {
               </p>
             </div>
             <p className="mt-2 text-[15px] leading-7 text-slate-800 dark:text-slate-100">
-              Every entry becomes data. After a week or two, the AI mirrors back what you can&apos;t
-              see from the inside:
+              <strong className="font-semibold text-slate-900 dark:text-white">Every entry becomes data.</strong>{" "}
+              After a week or two, the AI mirrors back what you can&apos;t see from the inside:
             </p>
             <ul className="mt-3 space-y-2">
               {PATTERN_BENEFITS.map((b) => (
@@ -220,7 +245,7 @@ function JoinInviteContent() {
                     className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
                     aria-hidden
                   />
-                  <span>{b}</span>
+                  <span>{renderEmphasized(b)}</span>
                 </li>
               ))}
             </ul>
@@ -244,8 +269,11 @@ function JoinInviteContent() {
                   Your takeaway
                 </p>
                 <p className="mt-2.5 text-lg font-semibold leading-snug tracking-tight text-amber-950 dark:text-amber-50 sm:text-xl">
-                  In 7 days, insults feel like background noise. In 30, people notice you radiate
-                  calm power — because nothing has the remote anymore.
+                  In <span className="underline decoration-amber-500/60 decoration-2 underline-offset-2">7 days</span>,
+                  insults feel like background noise. In{" "}
+                  <span className="underline decoration-amber-500/60 decoration-2 underline-offset-2">30</span>,
+                  people notice you <span className="underline decoration-amber-500/60 decoration-2 underline-offset-2">radiate calm power</span>{" "}
+                  — because nothing has the remote anymore.
                 </p>
               </div>
             </div>
