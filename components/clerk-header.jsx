@@ -3,10 +3,18 @@
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { UserCircle2 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+/** Routes that own their own auth CTA — header should stay minimal. */
+const HIDE_AUTH_BUTTONS_PREFIXES = ["/share/"];
 
 export default function ClerkHeader() {
   const { isSignedIn, isLoaded } = useAuth();
   const { openUserProfile } = useClerk();
+  const pathname = usePathname() || "";
+  const hideAuthButtons = HIDE_AUTH_BUTTONS_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
 
   return (
     <header className="flex min-h-[48px] items-center justify-end gap-2 bg-slate-100 px-4 py-2 md:px-8 dark:bg-slate-950">
@@ -21,7 +29,7 @@ export default function ClerkHeader() {
         >
           <UserCircle2 className="h-6 w-6" />
         </button>
-      ) : (
+      ) : hideAuthButtons ? null : (
         <>
           <Link
             href="/sign-in"
