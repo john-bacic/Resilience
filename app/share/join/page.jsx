@@ -8,22 +8,41 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import StoicMarkIcon from "@/components/stoic-mark-icon";
 
-const APP_HIGHLIGHTS = [
+/** The four-step "invincibility protocol" from the founder video, styled as
+ *  the in-app AI feedback rows: small uppercase eyebrow + bold lead + one-line
+ *  unlock. Each step is a numbered emerald card on the landing page. */
+const PROTOCOL_STEPS = [
   {
+    eyebrow: "Step 1",
     title: "Separate fact from story",
     body:
-      "Most of the sting in a hard moment isn't the event \u2014 it's the story you stack on top. STOIC AF makes you split the two in writing, so the panic loses its grip and you can decide instead of react."
+      "\u201CThey said words\u201D vs \u201Cthey think I\u2019m worthless.\u201D You only ever react to the story. STOIC AF makes you split them in writing \u2014 the spiral collapses."
   },
   {
-    title: "See your patterns over time",
+    eyebrow: "Step 2",
+    title: "Apply the control filter",
     body:
-      "Every entry is data. Over weeks you'll see your recurring triggers, the stories your mind keeps reaching for, the moods that fade once you name them, and which steps actually move the needle for you \u2014 not generic advice, your own pattern."
+      "If you can\u2019t control it, it doesn\u2019t exist in your reality. Other people\u2019s opinions, traffic, weather, the past \u2014 stop spending energy on the irrelevant."
   },
   {
+    eyebrow: "Step 3",
+    title: "Own your response, not the event",
+    body:
+      "You can\u2019t control what happens. You decide what it means. \u201CI\u2019m not good enough\u201D or \u201Cwrong fit, next one\u201D \u2014 same event, two different lives."
+  },
+  {
+    eyebrow: "Step 4",
     title: "Rehearse what could go wrong",
     body:
-      "A short daily scenario tuned to your real life. When the actual thing happens, you've already lived the worst version of it in your head \u2014 so it lands as a 4 instead of a 9."
+      "One short scenario every morning, tuned to your life. By the time it actually happens, you\u2019ve already survived the worst version in your head \u2014 it lands as a 4, not a 9."
   }
+];
+
+const PATTERN_BENEFITS = [
+  "Your recurring triggers \u2014 the situations that hit you, not the average person.",
+  "The stories your mind reaches for, ranked by how often you write them down.",
+  "Which step actually moves your mood the most \u2014 your own protocol, not generic advice.",
+  "How fast you bounce back over weeks, in your own data, not vibes."
 ];
 
 function JoinInviteContent() {
@@ -77,63 +96,172 @@ function JoinInviteContent() {
 
   if (status === "auth") {
     return (
-      <div className="mx-auto max-w-xl px-5 py-10 sm:py-14">
-        <div className="rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/85 sm:p-8">
-          <div className="flex items-center gap-3">
+      <div className="relative isolate min-h-[80vh] bg-gradient-to-b from-slate-50 via-white to-emerald-50/40 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-emerald-200/35 via-emerald-50/20 to-transparent blur-2xl dark:from-emerald-900/25 dark:via-emerald-950/10"
+        />
+
+        <main className="mx-auto max-w-2xl px-5 pb-12 pt-10 sm:px-6 sm:pt-14">
+          {/* ===== Brand row + hero ===== */}
+          <header className="flex items-center gap-3">
             <StoicMarkIcon className="h-10 w-9 text-slate-900 dark:text-slate-100" />
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold leading-tight text-slate-900 dark:text-slate-100">
+              <p className="text-base font-semibold leading-tight text-slate-900 dark:text-slate-100">
                 STOIC AF
-              </h1>
+              </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">30-day resilience</p>
             </div>
+          </header>
+
+          <section className="mt-6 rounded-3xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 p-6 ring-1 ring-emerald-200/55 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30 dark:ring-emerald-900/35 sm:p-7">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/70 bg-white/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden /> You&apos;ve been invited
+            </div>
+            <h1 className="mt-3 text-3xl font-semibold leading-[1.1] tracking-tight text-slate-900 dark:text-slate-100 sm:text-[34px]">
+              How to never be affected{" "}
+              <span className="text-emerald-700 dark:text-emerald-300">by anything or anyone.</span>
+            </h1>
+            <p className="mt-3 text-[15px] leading-7 text-slate-600 dark:text-slate-300">
+              The mental framework Marcus Aurelius wrote about and Navy SEALs train for 12 weeks
+              — distilled into a 5-minute daily practice. Someone you know is doing it. They
+              shared their diary so you can see what it looks like.
+            </p>
+          </section>
+
+          {/* ===== Pain agitation + stat ===== */}
+          <section className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/35 p-4 ring-1 ring-emerald-200/45 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/25 dark:ring-emerald-900/35 sm:p-5">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-800/90 dark:text-emerald-300">
+                The vulnerability problem
+              </p>
+            </div>
+            <p className="mt-2 text-[15px] leading-7 text-slate-800 dark:text-slate-100">
+              Someone criticizes you, you defend. Someone rejects you, you spiral. Someone
+              disrespects you, you explode. You&apos;re giving strangers a remote control to your
+              emotional state.
+            </p>
+            <div className="mt-3 flex items-baseline gap-3 rounded-xl border border-emerald-200/70 bg-white/70 px-3 py-2.5 dark:border-emerald-700/55 dark:bg-slate-900/55">
+              <span className="text-2xl font-bold tracking-tight text-emerald-700 dark:text-emerald-300">
+                340%
+              </span>
+              <span className="text-xs leading-snug text-slate-600 dark:text-slate-300">
+                higher cortisol in reactive people <br className="hidden sm:block" />
+                <span className="text-slate-400 dark:text-slate-500">
+                  Yale Psych Lab, Emotional Resilience Study (2019)
+                </span>
+              </span>
+            </div>
+          </section>
+
+          {/* ===== Protocol header ===== */}
+          <div className="mt-7 flex items-center gap-3">
+            <span className="h-px flex-1 bg-emerald-300/60 dark:bg-emerald-800/55" aria-hidden />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-800 dark:text-emerald-300">
+              The invincibility protocol
+            </p>
+            <span className="h-px flex-1 bg-emerald-300/60 dark:bg-emerald-800/55" aria-hidden />
           </div>
 
-          <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
-            You&apos;ve been invited
-          </p>
-          <h2 className="mt-1.5 text-2xl font-semibold leading-tight text-slate-900 dark:text-slate-100 sm:text-[28px]">
-            Stop being run by your reactions.
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-            Someone shared their diary with you. Same app, same practice — sign up to read theirs,
-            or to start your own.
-          </p>
-
-          <ul className="mt-6 space-y-3">
-            {APP_HIGHLIGHTS.map((h, i) => (
+          {/* ===== 4 steps (emerald, mirrors in-app AI rows) ===== */}
+          <ol className="mt-3 space-y-3">
+            {PROTOCOL_STEPS.map((s, i) => (
               <li
-                key={h.title}
-                className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/60"
+                key={s.title}
+                className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/35 p-4 ring-1 ring-emerald-200/45 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/25 dark:ring-emerald-900/30"
               >
-                <div className="flex items-start gap-3">
-                  <span
-                    className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white shadow-sm shadow-emerald-900/20"
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent"
+                />
+                <div className="flex gap-3">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-300/60 bg-emerald-100/70 text-[11px] font-bold tabular-nums text-emerald-900 dark:border-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-100"
                     aria-hidden
                   >
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {h.title}
+                    {String(i + 1).padStart(2, "0")}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-800/90 dark:text-emerald-300/95">
+                      {s.eyebrow}
                     </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                      {h.body}
+                    <p className="mt-1 text-base font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                      {s.title}
+                    </p>
+                    <p className="mt-1.5 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                      {s.body}
                     </p>
                   </div>
                 </div>
               </li>
             ))}
-          </ul>
+          </ol>
 
-          <p className="mt-6 rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-4 text-sm leading-6 text-emerald-900 dark:border-emerald-700/60 dark:bg-emerald-950/30 dark:text-emerald-100">
-            5 minutes a day. Free. Your diary stays private unless you share a link like this one.
+          {/* ===== Patterns — expanded benefit list ===== */}
+          <section className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/35 p-4 ring-1 ring-emerald-200/45 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/25 dark:ring-emerald-900/35 sm:p-5">
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-800/90 dark:text-emerald-300">
+                See your patterns over time
+              </p>
+            </div>
+            <p className="mt-2 text-[15px] leading-7 text-slate-800 dark:text-slate-100">
+              Every entry becomes data. After a week or two, the AI mirrors back what you can&apos;t
+              see from the inside:
+            </p>
+            <ul className="mt-3 space-y-2">
+              {PATTERN_BENEFITS.map((b) => (
+                <li
+                  key={b}
+                  className="flex items-start gap-2.5 text-sm leading-6 text-slate-700 dark:text-slate-200"
+                >
+                  <span
+                    className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                    aria-hidden
+                  />
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* ===== AMBER "your takeaway" — outcome, mirrors lesson card ===== */}
+          <section className="relative mt-4 overflow-hidden rounded-2xl border-l-4 border-amber-400 bg-gradient-to-br from-amber-50 via-amber-50/90 to-emerald-50/50 p-4 pl-3 shadow-lg shadow-amber-500/15 ring-2 ring-amber-400/45 dark:border-amber-500 dark:from-amber-950/50 dark:via-slate-900 dark:to-emerald-950/40 dark:shadow-amber-900/20 dark:ring-amber-500/35 sm:p-5 sm:pl-4">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-6 top-0 h-[3px] bg-gradient-to-r from-transparent via-amber-400/85 to-transparent"
+            />
+            <div className="flex gap-3">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-amber-400/70 bg-gradient-to-br from-amber-100 to-amber-200/80 text-xs font-bold tabular-nums text-amber-950 shadow-md shadow-amber-600/20 dark:border-amber-400 dark:from-amber-900/80 dark:to-amber-950 dark:text-amber-50"
+                aria-hidden
+              >
+                ★
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-amber-800/80 dark:text-amber-200/90">
+                  Your takeaway
+                </p>
+                <p className="mt-2.5 text-lg font-semibold leading-snug tracking-tight text-amber-950 dark:text-amber-50 sm:text-xl">
+                  In 7 days, insults feel like background noise. In 30, people notice you radiate
+                  calm power — because nothing has the remote anymore.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* ===== Risk reversal / why-trust strip ===== */}
+          <p className="mt-4 rounded-2xl border border-emerald-200/70 bg-emerald-50/60 px-4 py-3 text-center text-xs leading-6 text-emerald-900 dark:border-emerald-700/55 dark:bg-emerald-950/30 dark:text-emerald-100">
+            5 minutes a day &middot; Free &middot; Your diary stays private unless you share a link
+            like this one.
           </p>
 
-          <div className="mt-6 flex flex-col gap-2">
+          {/* ===== CTAs ===== */}
+          <div className="mt-5 flex flex-col gap-2">
             <Link
               href={signUpHref}
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-emerald-900/20 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
+              className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
             >
               Sign up &amp; accept invite
             </Link>
@@ -144,7 +272,11 @@ function JoinInviteContent() {
               I already have an account
             </Link>
           </div>
-        </div>
+
+          <p className="mt-3 text-center text-[11px] text-slate-400 dark:text-slate-500">
+            After signing up you&apos;ll land right back here — access granted automatically.
+          </p>
+        </main>
       </div>
     );
   }
