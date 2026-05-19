@@ -100,6 +100,13 @@ export default defineSchema({
     insideControl: v.optional(v.string()),
     chosenResponse: v.optional(v.string()),
     lesson: v.optional(v.string()),
+    /**
+     * 1–2 word affect label (e.g. "lonely", "scared", "ashamed"). Suggested
+     * by the AI from rawText, editable by the user. Affect labeling
+     * (Lieberman et al., 2007) reduces amygdala reactivity via RVLPFC,
+     * so the value lives next to `lesson` and is surfaced together.
+     */
+    feeling: v.optional(v.string()),
     moodBefore: v.optional(v.string()),
     moodAfter: v.optional(v.string()),
     createdAt: v.number()

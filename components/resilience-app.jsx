@@ -27,6 +27,7 @@ import {
   Share2,
   Sun,
   Sparkles,
+  Tag,
   Trash2,
   X
 } from "lucide-react";
@@ -153,7 +154,7 @@ function pickStateForConvex(state) {
   const diaryFields = [
     "id", "day", "loggedDateKey", "title", "rawText", "scenario", "source",
     "triggeredSteps", "fact", "story", "outsideControl", "insideControl",
-    "chosenResponse", "lesson", "moodBefore", "moodAfter", "createdAt"
+    "chosenResponse", "lesson", "feeling", "moodBefore", "moodAfter", "createdAt"
   ];
   const reflectionFields = [
     "id", "day", "scenario", "reaction", "facts", "story",
@@ -391,6 +392,7 @@ function buildCompletionBreakdown(completion, diary, reflections, programLength)
   const moodDeltas = [];
   const storyCounts = {};
   const lessonCounts = {};
+  const feelingCounts = {};
   const scenarioCounts = {};
 
   for (const entry of scopedDiary) {
@@ -415,6 +417,8 @@ function buildCompletionBreakdown(completion, diary, reflections, programLength)
     if (story) storyCounts[story] = (storyCounts[story] || 0) + 1;
     const lesson = String(entry?.lesson || "").trim();
     if (lesson) lessonCounts[lesson] = (lessonCounts[lesson] || 0) + 1;
+    const feeling = String(entry?.feeling || "").trim().toLowerCase();
+    if (feeling) feelingCounts[feeling] = (feelingCounts[feeling] || 0) + 1;
     const scenario = String(entry?.scenario || "").trim();
     if (scenario) scenarioCounts[scenario] = (scenarioCounts[scenario] || 0) + 1;
   }
@@ -478,6 +482,7 @@ function buildCompletionBreakdown(completion, diary, reflections, programLength)
     },
     topStories: topN(storyCounts, 3),
     topLessons: topN(lessonCounts, 3),
+    topFeelings: topN(feelingCounts, 3),
     topScenarios: topN(scenarioCounts, 3),
     dateSpan
   };
@@ -948,6 +953,7 @@ const DIARY_MODAL_FIELDS = [
   { key: "fact", label: "Fact" },
   { key: "story", label: "Story" },
   { key: "chosenResponse", label: "Chosen response" },
+  { key: "feeling", label: "Name the feeling" },
   { key: "lesson", label: "Lesson" }
 ];
 
@@ -1021,13 +1027,41 @@ function DiaryEntryModalFields({
           <label className={`block ${diaryModalFieldLabelClass}`} htmlFor={`diary-modal-${key}`}>
             {label}
           </label>
-          <Textarea
-            id={`diary-modal-${key}`}
-            value={draft[key] ?? ""}
-            onChange={(e) => onFieldChange(key, e.target.value)}
-            placeholder={`${label}…`}
-            className={`mt-1.5${key === "lesson" ? " font-semibold" : ""}`}
-          />
+          {key === "feeling" ? (
+            <>
+              <p className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                One or two words. Naming it quiets the part of your brain that&apos;s firing.
+              </p>
+              <Input
+                id={`diary-modal-${key}`}
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                maxLength={32}
+                value={draft[key] ?? ""}
+                placeholder="lonely, scared, ashamed…"
+                className="mt-1.5 lowercase font-semibold"
+                onChange={(e) => {
+                  const cleaned = String(e.target.value || "")
+                    .toLowerCase()
+                    .replace(/[^a-z\s'-]/g, "")
+                    .replace(/\s+/g, " ")
+                    .split(" ")
+                    .slice(0, 2)
+                    .join(" ");
+                  onFieldChange(key, cleaned);
+                }}
+              />
+            </>
+          ) : (
+            <Textarea
+              id={`diary-modal-${key}`}
+              value={draft[key] ?? ""}
+              onChange={(e) => onFieldChange(key, e.target.value)}
+              placeholder={`${label}…`}
+              className={`mt-1.5${key === "lesson" ? " font-semibold" : ""}`}
+            />
+          )}
         </section>
       ))}
     </div>
@@ -1445,6 +1479,169 @@ function CeremonialInsightBlock({ label, text, sectionIndex, reduceMotion, revea
   );
 }
 
+/**
+ * Editable affect-label chip surfaced inside the Log "Trigger result" ceremony,
+ * positioned right before the Lesson reveal.
+ *
+ * Why this UX:
+ *  - Lieberman et al., 2007 (Psychological Science 18:5, 421–428) found that
+ *    naming an emotion in 1–2 words dampens amygdala reactivity via RVLPFC →
+ *    MPFC → amygdala. The effect comes from the *user* doing the labeling,
+ *    not from passively reading a description. So the AI proposes the word,
+ *    but the user is invited to confirm or refine it in place.
+ *  - Lives in the Lesson section because the takeaway only fully lands once
+ *    the feeling has been named.
+ *
+ * Limits: max 32 chars / ~2 words, soft-enforced client-side (server also sanitizes).
+ */
+function FeelingChip({ value, onChange, sectionIndex, reduceMotion, revealKey }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || "");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(value || "");
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const blockEnterDelay = reduceMotion
+    ? 0.06 * sectionIndex
+    : INSIGHT_SEQUENCE_FIRST + sectionIndex * INSIGHT_SEQUENCE_GAP;
+  const lineKey = `${revealKey}-feeling`;
+
+  function commit() {
+    const cleaned = String(draft || "")
+      .toLowerCase()
+      .replace(/[^a-z\s'-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(" ")
+      .slice(0, 32);
+    onChange(cleaned);
+    setEditing(false);
+  }
+
+  function cancel() {
+    setDraft(value || "");
+    setEditing(false);
+  }
+
+  const display = (value || "").trim();
+  const hasValue = display.length > 0;
+
+  return (
+    <motion.section
+      initial={
+        reduceMotion
+          ? { opacity: 0 }
+          : { opacity: 0, y: 32, scale: 0.94, filter: "blur(8px)" }
+      }
+      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      transition={{
+        delay: blockEnterDelay,
+        duration: reduceMotion ? 0.28 : 0.6,
+        ease: [0.15, 1, 0.28, 1]
+      }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-50 via-white to-amber-50/40 p-4 ring-1 ring-rose-200/45 dark:from-rose-950/30 dark:via-slate-800 dark:to-amber-950/20 dark:ring-rose-900/35"
+    >
+      {!reduceMotion && (
+        <motion.div
+          key={lineKey}
+          aria-hidden
+          className="pointer-events-none absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-rose-400/60 to-transparent"
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{ delay: blockEnterDelay + 0.06, duration: 0.85, ease: [0.2, 1, 0.36, 1] }}
+          style={{ transformOrigin: "center" }}
+        />
+      )}
+      <div className="flex gap-3">
+        <motion.div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rose-300/60 bg-rose-100/70 text-[11px] font-bold tabular-nums text-rose-900 dark:border-rose-600 dark:bg-rose-900/45 dark:text-rose-100"
+          initial={reduceMotion ? undefined : { scale: 0, rotate: -14 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{
+            delay: blockEnterDelay + 0.12,
+            type: "spring",
+            stiffness: 280,
+            damping: 19
+          }}
+          aria-hidden
+        >
+          {String(sectionIndex + 1).padStart(2, "0")}
+        </motion.div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Tag className="h-3.5 w-3.5 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />
+            <h3 className="text-[10px] font-medium uppercase tracking-[0.22em] text-rose-800/90 dark:text-rose-300/95">
+              Name the feeling
+            </h3>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-snug text-rose-900/70 dark:text-rose-200/70">
+            One or two words. Naming it quiets the part of your brain that&apos;s firing.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {editing ? (
+              <>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  maxLength={32}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commit();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancel();
+                    }
+                  }}
+                  onBlur={commit}
+                  placeholder="lonely, scared, ashamed…"
+                  className="min-w-[10rem] flex-1 rounded-full border border-rose-300 bg-white px-3 py-1.5 text-sm font-semibold lowercase text-rose-950 placeholder:text-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400 dark:border-rose-600 dark:bg-slate-900 dark:text-rose-100 dark:placeholder:text-rose-500/60"
+                />
+                <span className="text-[10px] text-rose-700/70 dark:text-rose-300/70">enter to save · esc to cancel</span>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className={
+                    hasValue
+                      ? "inline-flex items-center gap-1.5 rounded-full border border-rose-400/70 bg-rose-100 px-3 py-1.5 text-base font-semibold lowercase tracking-tight text-rose-950 transition hover:bg-rose-200 dark:border-rose-500/70 dark:bg-rose-900/40 dark:text-rose-50 dark:hover:bg-rose-900/60"
+                      : "inline-flex items-center gap-1.5 rounded-full border border-dashed border-rose-400/60 bg-white px-3 py-1.5 text-sm font-medium italic text-rose-700 transition hover:bg-rose-50 dark:border-rose-500/50 dark:bg-slate-900 dark:text-rose-200 dark:hover:bg-rose-950/30"
+                  }
+                >
+                  {hasValue ? display : "tap to name it"}
+                </button>
+                {hasValue ? (
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-rose-700/70 dark:text-rose-300/70">
+                    tap to refine
+                  </span>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
 /** One row in the shared-diary list: gradient frame, step orb, scenario + lesson callouts (Trigger-result feel). */
 function SharedDiaryListEntryCard({ entry, index, entryProgramDay, rc, onOpen }) {
   const reduceMotion = useReducedMotion();
@@ -1775,6 +1972,7 @@ export default function ResilienceApp() {
     fact: "",
     story: "",
     chosenResponse: "",
+    feeling: "",
     lesson: "",
     moodBefore: "reflective",
     moodAfter: "centered"
@@ -1818,6 +2016,7 @@ export default function ResilienceApp() {
     outsideControl: "",
     insideControl: "",
     chosenResponse: "",
+    feeling: "",
     lesson: "",
     moodBefore: "reflective",
     moodAfter: "centered"
@@ -2533,6 +2732,7 @@ export default function ResilienceApp() {
         eventForm.outsideControl,
         eventForm.insideControl,
         eventForm.chosenResponse,
+        eventForm.feeling,
         eventForm.lesson
       ].join("\x1e"),
     [
@@ -2541,6 +2741,7 @@ export default function ResilienceApp() {
       eventForm.outsideControl,
       eventForm.insideControl,
       eventForm.chosenResponse,
+      eventForm.feeling,
       eventForm.lesson
     ]
   );
@@ -2926,7 +3127,8 @@ export default function ResilienceApp() {
           outsideControl: aiAnalysis.outsideControl || "",
           insideControl: aiAnalysis.insideControl || "",
           chosenResponse: aiAnalysis.chosenResponse || "",
-          lesson: aiAnalysis.lesson || ""
+          lesson: aiAnalysis.lesson || "",
+          feeling: aiAnalysis.feeling || ""
         }));
       } catch (error) {
         console.error(error);
@@ -3003,6 +3205,7 @@ export default function ResilienceApp() {
       fact: entry.fact || "",
       story: entry.story || "",
       chosenResponse: entry.chosenResponse || "",
+      feeling: entry.feeling || "",
       lesson: entry.lesson || "",
       moodBefore: entry.moodBefore != null ? normalizeMoodId(entry.moodBefore) : "reflective",
       moodAfter: entry.moodAfter != null ? normalizeMoodId(entry.moodAfter) : "centered"
@@ -3323,6 +3526,7 @@ export default function ResilienceApp() {
       fact: entry.fact || "",
       story: entry.story || "",
       chosenResponse: entry.chosenResponse || "",
+      feeling: entry.feeling || "",
       lesson: entry.lesson || "",
       moodBefore: entry.moodBefore != null ? normalizeMoodId(entry.moodBefore) : "reflective",
       moodAfter: entry.moodAfter != null ? normalizeMoodId(entry.moodAfter) : "centered"
@@ -3344,6 +3548,7 @@ export default function ResilienceApp() {
               fact: editingDiaryDraft.fact,
               story: editingDiaryDraft.story,
               chosenResponse: editingDiaryDraft.chosenResponse,
+              feeling: editingDiaryDraft.feeling,
               lesson: editingDiaryDraft.lesson,
               moodBefore: normalizeMoodId(editingDiaryDraft.moodBefore),
               moodAfter: normalizeMoodId(editingDiaryDraft.moodAfter),
@@ -4017,10 +4222,19 @@ export default function ResilienceApp() {
                             reduceMotion={reduceMotion}
                             revealKey={triggerResultRevealKey}
                           />
+                          <FeelingChip
+                            value={eventForm.feeling}
+                            onChange={(v) =>
+                              setEventForm((prev) => ({ ...prev, feeling: v }))
+                            }
+                            sectionIndex={5}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
+                          />
                           <CeremonialInsightBlock
                             label="Lesson"
                             text={eventForm.lesson}
-                            sectionIndex={5}
+                            sectionIndex={6}
                             reduceMotion={reduceMotion}
                             revealKey={triggerResultRevealKey}
                             isLesson
@@ -4722,11 +4936,30 @@ export default function ResilienceApp() {
 
                   {activeCompletionBreakdown.topScenarios.length > 0 ||
                   activeCompletionBreakdown.topStories.length > 0 ||
-                  activeCompletionBreakdown.topLessons.length > 0 ? (
+                  activeCompletionBreakdown.topLessons.length > 0 ||
+                  activeCompletionBreakdown.topFeelings.length > 0 ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         Recurring threads
                       </p>
+                      {activeCompletionBreakdown.topFeelings.length > 0 ? (
+                        <div className="mt-2 rounded-xl border border-rose-200/70 bg-rose-50/60 p-3 dark:border-rose-900/40 dark:bg-rose-950/25">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-700 dark:text-rose-300">
+                            Feelings you named
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {activeCompletionBreakdown.topFeelings.map(([text, c]) => (
+                              <span
+                                key={`fe-${text}`}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-rose-300/70 bg-white px-2.5 py-1 text-xs font-semibold lowercase text-rose-900 dark:border-rose-700/70 dark:bg-rose-950/40 dark:text-rose-100"
+                              >
+                                {text}
+                                <span className="font-mono text-[10px] text-rose-500/80 dark:text-rose-300/70">×{c}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="mt-2 grid gap-3 sm:grid-cols-3">
                         {activeCompletionBreakdown.topScenarios.length > 0 ? (
                           <div>

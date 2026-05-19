@@ -282,6 +282,7 @@ export const restoreUserState = mutation({
         insideControl: typeof entry.insideControl === "string" ? entry.insideControl : undefined,
         chosenResponse: typeof entry.chosenResponse === "string" ? entry.chosenResponse : undefined,
         lesson: typeof entry.lesson === "string" ? entry.lesson : undefined,
+        feeling: typeof entry.feeling === "string" ? entry.feeling : undefined,
         moodBefore: typeof entry.moodBefore === "string" ? entry.moodBefore : undefined,
         moodAfter: typeof entry.moodAfter === "string" ? entry.moodAfter : undefined,
         createdAt:

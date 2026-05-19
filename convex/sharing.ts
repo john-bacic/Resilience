@@ -435,6 +435,7 @@ export const getSharedDiary = query({
         insideControl: d.insideControl,
         chosenResponse: d.chosenResponse,
         lesson: d.lesson,
+        feeling: d.feeling,
         moodBefore: d.moodBefore ?? null,
         moodAfter: d.moodAfter ?? null,
         createdAt: new Date(d.createdAt).toISOString()

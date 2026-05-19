@@ -10,8 +10,28 @@ function fallbackAnalysis(entryText) {
     outsideControl: "",
     insideControl: "",
     chosenResponse: "",
-    lesson: ""
+    lesson: "",
+    feeling: ""
   };
+}
+
+/**
+ * Affect labeling (Lieberman et al., 2007) shows the strongest amygdala
+ * dampening comes from a precise emotion *word*, not a phrase. Coerce the
+ * model's `feeling` output to 1–2 lowercase words, strip punctuation, and
+ * reject obvious non-labels.
+ */
+function sanitizeFeeling(raw) {
+  const cleaned = String(raw || "")
+    .toLowerCase()
+    .replace(/[^a-z\s'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  const words = cleaned.split(" ").filter(Boolean).slice(0, 2);
+  const result = words.join(" ");
+  if (result.length > 32) return "";
+  return result;
 }
 
 export async function POST(request) {
@@ -44,7 +64,7 @@ export async function POST(request) {
         max_tokens: 500,
         temperature: 0.4,
         system:
-          "You are a resilience journaling coach. Return strict JSON only with keys: triggered, fact, story, outsideControl, insideControl, chosenResponse, lesson. triggered must be an object with booleans step1 step2 step3. Keep text concise, practical, and in casual everyday language.",
+          "You are a resilience journaling coach. Return strict JSON only with keys: triggered, fact, story, outsideControl, insideControl, chosenResponse, lesson, feeling. triggered must be an object with booleans step1 step2 step3. Keep text concise, practical, and in casual everyday language. For `feeling`: ONE word, lowercase, naming the core emotion underneath what the user wrote (e.g. \"lonely\", \"scared\", \"ashamed\", \"frustrated\", \"hurt\", \"resentful\"). Two words ONLY when one word is genuinely inadequate. Never a phrase or sentence. Pick the most precise label, not the vaguest. If the entry is purely neutral/positive, return \"\".",
         messages: [
           {
             role: "user",
@@ -88,7 +108,8 @@ export async function POST(request) {
       outsideControl: String(parsed?.outsideControl || ""),
       insideControl: String(parsed?.insideControl || ""),
       chosenResponse: String(parsed?.chosenResponse || ""),
-      lesson: String(parsed?.lesson || "")
+      lesson: String(parsed?.lesson || ""),
+      feeling: sanitizeFeeling(parsed?.feeling)
     };
 
     if (!safe.triggered.step1 && !safe.triggered.step2 && !safe.triggered.step3) {

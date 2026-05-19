@@ -48,6 +48,7 @@ const diaryEntryValidator = v.object({
   insideControl: v.optional(v.string()),
   chosenResponse: v.optional(v.string()),
   lesson: v.optional(v.string()),
+  feeling: v.optional(v.string()),
   moodBefore: v.optional(v.union(v.string(), v.null())),
   moodAfter: v.optional(v.union(v.string(), v.null())),
   createdAt: v.optional(v.string())
@@ -230,6 +231,7 @@ export const replaceFromState = mutation({
         insideControl: entry.insideControl || undefined,
         chosenResponse: entry.chosenResponse || undefined,
         lesson: entry.lesson || undefined,
+        feeling: entry.feeling || undefined,
         moodBefore: entry.moodBefore || undefined,
         moodAfter: entry.moodAfter || undefined,
         createdAt: isoToMs(entry.createdAt, now)
@@ -415,6 +417,7 @@ export const getCurrent = query({
         insideControl: d.insideControl,
         chosenResponse: d.chosenResponse,
         lesson: d.lesson,
+        feeling: d.feeling,
         moodBefore: d.moodBefore ?? null,
         moodAfter: d.moodAfter ?? null,
         createdAt: new Date(d.createdAt).toISOString()
