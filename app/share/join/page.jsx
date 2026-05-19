@@ -86,6 +86,7 @@ const PROTOCOL_STEPS = [
 const PATTERN_BENEFITS = [
   "**Your recurring triggers** \u2014 the situations that hit you, not the average person.",
   "**The stories your mind reaches for**, ranked by how often you write them down.",
+  "**The feelings you keep naming** \u2014 lonely, ashamed, hurt, scared \u2014 surfaced over weeks so you stop being run by what you can\u2019t see.",
   "**Which step actually moves your mood** the most \u2014 your own protocol, not generic advice.",
   "**How fast you bounce back** over weeks, in your own data, not vibes."
 ];
@@ -262,6 +263,46 @@ function JoinInviteContent() {
               </li>
             ))}
           </ol>
+
+          {/* ===== NEW: "Name the feeling" — affect labeling (Lieberman 2007) ===== */}
+          <section className="relative mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-rose-50 via-white to-amber-50/35 p-4 ring-1 ring-rose-200/55 dark:from-rose-950/30 dark:via-slate-800 dark:to-amber-950/20 dark:ring-rose-900/40 sm:p-5">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-rose-400/60 to-transparent"
+            />
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-rose-800/90 dark:text-rose-300">
+                Plus: name the feeling
+              </p>
+            </div>
+            <p className="mt-2 text-[15px] leading-7 text-slate-800 dark:text-slate-100">
+              UCLA neuroscientist <strong className="font-semibold text-slate-900 dark:text-white">Matthew Lieberman</strong>{" "}
+              put people in fMRI scanners and found that when they named what they felt — in{" "}
+              <strong className="font-semibold text-slate-900 dark:text-white">one or two words</strong> — the
+              brain&apos;s alarm system{" "}
+              <strong className="font-semibold text-slate-900 dark:text-white">measurably quieted within seconds</strong>.
+              Same regions that process physical pain process emotional pain. He called it{" "}
+              <strong className="font-semibold text-slate-900 dark:text-white">affect labeling</strong>.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {["lonely", "scared", "ashamed", "hurt", "resentful", "frustrated"].map((w) => (
+                <span
+                  key={w}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-rose-300/70 bg-white/80 px-2.5 py-1 text-xs font-semibold lowercase text-rose-900 dark:border-rose-700/70 dark:bg-rose-950/40 dark:text-rose-100"
+                >
+                  {w}
+                </span>
+              ))}
+            </div>
+            <p className="mt-3 text-[13px] leading-6 text-slate-700 dark:text-slate-300">
+              STOIC AF reads your entry, proposes the most precise word, and{" "}
+              <strong className="font-semibold text-slate-900 dark:text-white">lets you refine it</strong> —
+              because the dampening effect comes from <em>you</em> owning the word. Over weeks, your{" "}
+              <strong className="font-semibold text-slate-900 dark:text-white">recurring feelings</strong>{" "}
+              become a pattern you can finally see.
+            </p>
+          </section>
 
           {/* ===== Patterns — expanded benefit list ===== */}
           <section className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/35 p-4 ring-1 ring-emerald-200/45 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/25 dark:ring-emerald-900/35 sm:p-5">
