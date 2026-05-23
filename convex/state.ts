@@ -33,6 +33,11 @@ const personalProfileValidator = v.object({
   notes: v.optional(v.string())
 });
 
+const resetActionValidator = v.object({
+  title: v.string(),
+  howTo: v.string()
+});
+
 const diaryEntryValidator = v.object({
   id: v.string(),
   day: v.optional(v.number()),
@@ -49,6 +54,8 @@ const diaryEntryValidator = v.object({
   chosenResponse: v.optional(v.string()),
   lesson: v.optional(v.string()),
   feeling: v.optional(v.string()),
+  resetActions: v.optional(v.array(resetActionValidator)),
+  resetActionDone: v.optional(resetActionValidator),
   moodBefore: v.optional(v.union(v.string(), v.null())),
   moodAfter: v.optional(v.union(v.string(), v.null())),
   createdAt: v.optional(v.string())
@@ -108,6 +115,30 @@ function isoToMs(iso: string | undefined, fallback: number): number {
 
 function normalizeStep(s: string): "step1" | "step2" | "step3" | null {
   return s === "step1" || s === "step2" || s === "step3" ? s : null;
+}
+
+function normalizeResetAction(raw: unknown): { title: string; howTo: string } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const title = String(o.title ?? "")
+    .trim()
+    .slice(0, 48);
+  const howTo = String(o.howTo ?? "")
+    .trim()
+    .slice(0, 220);
+  if (!title || !howTo) return undefined;
+  return { title, howTo };
+}
+
+function normalizeResetActions(raw: unknown): { title: string; howTo: string }[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: { title: string; howTo: string }[] = [];
+  for (const item of raw) {
+    const norm = normalizeResetAction(item);
+    if (norm) out.push(norm);
+    if (out.length >= 3) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 async function ensureUser(ctx: MutationCtx): Promise<Doc<"users">> {
@@ -232,6 +263,8 @@ export const replaceFromState = mutation({
         chosenResponse: entry.chosenResponse || undefined,
         lesson: entry.lesson || undefined,
         feeling: entry.feeling || undefined,
+        resetActions: normalizeResetActions(entry.resetActions),
+        resetActionDone: normalizeResetAction(entry.resetActionDone),
         moodBefore: entry.moodBefore || undefined,
         moodAfter: entry.moodAfter || undefined,
         createdAt: isoToMs(entry.createdAt, now)
@@ -418,6 +451,8 @@ export const getCurrent = query({
         chosenResponse: d.chosenResponse,
         lesson: d.lesson,
         feeling: d.feeling,
+        resetActions: d.resetActions,
+        resetActionDone: d.resetActionDone,
         moodBefore: d.moodBefore ?? null,
         moodAfter: d.moodAfter ?? null,
         createdAt: new Date(d.createdAt).toISOString()

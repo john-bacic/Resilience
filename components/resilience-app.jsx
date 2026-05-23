@@ -154,7 +154,8 @@ function pickStateForConvex(state) {
   const diaryFields = [
     "id", "day", "loggedDateKey", "title", "rawText", "scenario", "source",
     "triggeredSteps", "fact", "story", "outsideControl", "insideControl",
-    "chosenResponse", "lesson", "feeling", "moodBefore", "moodAfter", "createdAt"
+    "chosenResponse", "lesson", "feeling", "resetActions", "resetActionDone",
+    "moodBefore", "moodAfter", "createdAt"
   ];
   const reflectionFields = [
     "id", "day", "scenario", "reaction", "facts", "story",
@@ -1705,7 +1706,39 @@ function FeelingChip({ value, options, onChange, sectionIndex, reduceMotion, rev
  * Renders nothing when `actions` is empty (e.g. neutral entries, fallback
  * analysis path) so the ceremony degrades gracefully.
  */
-function ResetActionsBlock({ actions, sectionIndex, reduceMotion, revealKey }) {
+function resetActionMatches(a, b) {
+  if (!a || !b) return false;
+  return String(a.title || "").trim() === String(b.title || "").trim() &&
+    String(a.howTo || "").trim() === String(b.howTo || "").trim();
+}
+
+/** Compact recap of which somatic move the user marked done (ceremony, diary list, modal). */
+function ResetActionDoneCallout({ done, className = "" }) {
+  if (!done?.title) return null;
+  return (
+    <div
+      className={`flex gap-2.5 rounded-xl border border-sky-300/70 bg-sky-50/95 px-3 py-2.5 dark:border-sky-700/55 dark:bg-sky-950/40 ${className}`}
+    >
+      <Check
+        className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400"
+        strokeWidth={2.5}
+        aria-hidden
+      />
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-sky-950 dark:text-sky-50">
+          Try this now — you did: {done.title}
+        </p>
+        {done.howTo ? (
+          <p className="mt-0.5 text-xs leading-snug text-sky-900/75 dark:text-sky-200/75">
+            {done.howTo}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ResetActionsBlock({ actions, done, onDoneChange, sectionIndex, reduceMotion, revealKey }) {
   const list = Array.isArray(actions) ? actions.slice(0, 3) : [];
   if (list.length === 0) return null;
 
@@ -1763,13 +1796,15 @@ function ResetActionsBlock({ actions, sectionIndex, reduceMotion, revealKey }) {
             </h3>
           </div>
           <p className="mt-1.5 text-[11px] leading-snug text-sky-900/70 dark:text-sky-200/70">
-            Quick body-based moves to take the edge off. Pick one — under two minutes each.
+            Quick body-based moves to take the edge off. Tap one when you&apos;ve done it — under two minutes each.
           </p>
+          {done?.title ? <ResetActionDoneCallout done={done} className="mt-3" /> : null}
           <ul className="mt-3 space-y-2">
             {list.map((action, idx) => {
               const itemDelay = reduceMotion
                 ? blockEnterDelay + 0.04 * idx
                 : blockEnterDelay + 0.18 + idx * 0.12;
+              const isDone = resetActionMatches(done, action);
               return (
                 <motion.li
                   key={`${action.title}-${idx}`}
@@ -1780,19 +1815,40 @@ function ResetActionsBlock({ actions, sectionIndex, reduceMotion, revealKey }) {
                     duration: reduceMotion ? 0.25 : 0.45,
                     ease: [0.15, 1, 0.28, 1]
                   }}
-                  className="rounded-xl border border-sky-200/60 bg-white/80 p-3 dark:border-sky-800/60 dark:bg-slate-900/60"
                 >
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-[10px] font-bold tabular-nums text-sky-700/70 dark:text-sky-300/70">
-                      {String(idx + 1).padStart(2, "0")}
-                    </span>
-                    <p className="text-sm font-semibold text-sky-950 dark:text-sky-50">
-                      {action.title}
-                    </p>
-                  </div>
-                  <p className="mt-1 pl-6 text-sm leading-snug text-slate-700 dark:text-slate-200">
-                    {action.howTo}
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onDoneChange(isDone ? null : { title: action.title, howTo: action.howTo })}
+                    aria-pressed={isDone}
+                    className={
+                      isDone
+                        ? "w-full rounded-xl border border-sky-400/80 bg-sky-100/90 p-3 text-left ring-2 ring-sky-400/35 transition dark:border-sky-500/70 dark:bg-sky-900/50 dark:ring-sky-500/25"
+                        : "w-full rounded-xl border border-sky-200/60 bg-white/80 p-3 text-left transition hover:border-sky-300 hover:bg-sky-50/80 dark:border-sky-800/60 dark:bg-slate-900/60 dark:hover:border-sky-700 dark:hover:bg-sky-950/30"
+                    }
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-[10px] font-bold tabular-nums text-sky-700/70 dark:text-sky-300/70">
+                        {String(idx + 1).padStart(2, "0")}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-sky-950 dark:text-sky-50">
+                            {action.title}
+                          </p>
+                          {isDone ? (
+                            <Check
+                              className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400"
+                              strokeWidth={2.5}
+                              aria-hidden
+                            />
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-sm leading-snug text-slate-700 dark:text-slate-200">
+                          {action.howTo}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
                 </motion.li>
               );
             })}
@@ -1899,6 +1955,9 @@ function SharedDiaryListEntryCard({ entry, index, entryProgramDay, rc, onOpen })
             <p className="mt-2 text-xs font-medium text-slate-600 dark:text-slate-400">
               Mood · {formatMoodPair(entry.moodBefore, entry.moodAfter)}
             </p>
+          ) : null}
+          {entry.resetActionDone?.title ? (
+            <ResetActionDoneCallout done={entry.resetActionDone} className="mt-3" />
           ) : null}
           {entry.lesson ? (
             <div className="mt-3 rounded-xl border border-amber-300/75 bg-gradient-to-br from-amber-50/95 to-amber-100/45 px-3 py-2.5 shadow-sm shadow-amber-600/10 dark:border-amber-600/45 dark:from-amber-950/55 dark:to-amber-950/25 dark:shadow-amber-900/20">
@@ -2181,6 +2240,7 @@ export default function ResilienceApp() {
     feeling: "",
     feelingOptions: [],
     resetActions: [],
+    resetActionDone: null,
     lesson: "",
     moodBefore: "reflective",
     moodAfter: "centered"
@@ -2795,6 +2855,12 @@ export default function ResilienceApp() {
     return Boolean(entry && entry.source === "reflection");
   }, [editingDiaryId, isDiaryEditModalOpen, diaryEntryModalViewOnly, app.diary]);
 
+  const editingDiaryEntryResetActionDone = useMemo(() => {
+    if (!editingDiaryId || !isDiaryEditModalOpen) return null;
+    const entry = app.diary.find((e) => e.id === editingDiaryId);
+    return entry?.resetActionDone?.title ? entry.resetActionDone : null;
+  }, [editingDiaryId, isDiaryEditModalOpen, app.diary]);
+
   const editingDiaryEntryMoodPair = useMemo(() => {
     if (!editingDiaryId || !isDiaryEditModalOpen) return null;
     const entry = app.diary.find((e) => e.id === editingDiaryId);
@@ -3312,7 +3378,8 @@ export default function ResilienceApp() {
                     item.howTo.trim()
                 )
                 .slice(0, 3)
-            : []
+            : [],
+          resetActionDone: null
         }));
       } catch (error) {
         console.error(error);
@@ -4427,6 +4494,10 @@ export default function ResilienceApp() {
                           />
                           <ResetActionsBlock
                             actions={eventForm.resetActions}
+                            done={eventForm.resetActionDone}
+                            onDoneChange={(next) =>
+                              setEventForm((prev) => ({ ...prev, resetActionDone: next }))
+                            }
                             sectionIndex={6}
                             reduceMotion={reduceMotion}
                             revealKey={triggerResultRevealKey}
@@ -4439,6 +4510,9 @@ export default function ResilienceApp() {
                             revealKey={triggerResultRevealKey}
                             isLesson
                           />
+                          {eventForm.resetActionDone?.title ? (
+                            <ResetActionDoneCallout done={eventForm.resetActionDone} />
+                          ) : null}
                           <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-600 dark:bg-slate-800/60">
                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mood</p>
                             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -4523,6 +4597,9 @@ export default function ResilienceApp() {
                                   Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
                                 </p>
                               )}
+                              {entry.resetActionDone?.title ? (
+                                <ResetActionDoneCallout done={entry.resetActionDone} className="mt-2" />
+                              ) : null}
                               <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">{entry.lesson || "No lesson logged."}</p>
                               <DiaryEntrySharedActivityFooter
                                 entryId={entry.id}
@@ -4885,6 +4962,9 @@ export default function ResilienceApp() {
                                 Mood: {formatMoodPair(entry.moodBefore, entry.moodAfter)}
                               </p>
                             )}
+                            {entry.resetActionDone?.title ? (
+                              <ResetActionDoneCallout done={entry.resetActionDone} className="mt-2" />
+                            ) : null}
                             <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">{entry.lesson || "No lesson logged."}</p>
                             <DiaryEntrySharedActivityFooter
                               entryId={entry.id}
@@ -5812,6 +5892,9 @@ export default function ResilienceApp() {
                   setEditingDiaryDraft((prev) => ({ ...prev, [key]: value }))
                 }
               />
+              {diaryEntryModalViewOnly && editingDiaryEntryResetActionDone ? (
+                <ResetActionDoneCallout done={editingDiaryEntryResetActionDone} className="mt-4" />
+              ) : null}
               {diaryEntryModalViewOnly && editingDiaryEntryMoodPair != null && (
                 <section
                   className="mt-4"

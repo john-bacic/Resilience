@@ -107,6 +107,22 @@ export default defineSchema({
      * so the value lives next to `lesson` and is surfaced together.
      */
     feeling: v.optional(v.string()),
+    /** AI-suggested somatic moves from log analysis (title + howTo). */
+    resetActions: v.optional(
+      v.array(
+        v.object({
+          title: v.string(),
+          howTo: v.string()
+        })
+      )
+    ),
+    /** The move the user marked as done during the log ceremony. */
+    resetActionDone: v.optional(
+      v.object({
+        title: v.string(),
+        howTo: v.string()
+      })
+    ),
     moodBefore: v.optional(v.string()),
     moodAfter: v.optional(v.string()),
     createdAt: v.number()

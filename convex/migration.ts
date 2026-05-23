@@ -283,6 +283,33 @@ export const restoreUserState = mutation({
         chosenResponse: typeof entry.chosenResponse === "string" ? entry.chosenResponse : undefined,
         lesson: typeof entry.lesson === "string" ? entry.lesson : undefined,
         feeling: typeof entry.feeling === "string" ? entry.feeling : undefined,
+        resetActions: Array.isArray(entry.resetActions)
+          ? entry.resetActions
+              .filter(
+                (a: unknown) =>
+                  a &&
+                  typeof a === "object" &&
+                  typeof (a as { title?: unknown }).title === "string" &&
+                  typeof (a as { howTo?: unknown }).howTo === "string"
+              )
+              .slice(0, 3)
+              .map((a: { title: string; howTo: string }) => ({
+                title: a.title.trim().slice(0, 48),
+                howTo: a.howTo.trim().slice(0, 220)
+              }))
+              .filter((a) => a.title && a.howTo)
+          : undefined,
+        resetActionDone: (() => {
+          const raw = entry.resetActionDone;
+          if (!raw || typeof raw !== "object") return undefined;
+          const title = String((raw as { title?: unknown }).title ?? "")
+            .trim()
+            .slice(0, 48);
+          const howTo = String((raw as { howTo?: unknown }).howTo ?? "")
+            .trim()
+            .slice(0, 220);
+          return title && howTo ? { title, howTo } : undefined;
+        })(),
         moodBefore: typeof entry.moodBefore === "string" ? entry.moodBefore : undefined,
         moodAfter: typeof entry.moodAfter === "string" ? entry.moodAfter : undefined,
         createdAt:
