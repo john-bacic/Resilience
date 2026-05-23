@@ -113,7 +113,7 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001",
-        max_tokens: 500,
+        max_tokens: 1200,
         temperature: 0.4,
         system:
           "You are a resilience journaling coach. Return strict JSON only with keys: triggered, fact, story, outsideControl, insideControl, chosenResponse, lesson, feeling, feelingOptions, resetActions. triggered must be an object with booleans step1 step2 step3. Keep text concise, practical, and in casual everyday language. For `feeling`: ONE word, lowercase, naming the core emotion underneath what the user wrote (e.g. \"lonely\", \"scared\", \"ashamed\", \"frustrated\", \"hurt\", \"resentful\"). Two words ONLY when one word is genuinely inadequate. Never a phrase or sentence. Pick the most precise label, not the vaguest. If the entry is purely neutral/positive, return \"\". For `feelingOptions`: an array of 5–6 distinct lowercase one-word emotion labels in the same affective vicinity as `feeling`, so the user can pick the one that resonates. Include `feeling` as the first item. Vary precision and shade (e.g. for `lonely`: [\"lonely\", \"isolated\", \"abandoned\", \"unseen\", \"left out\", \"disconnected\"]; for `frustrated`: [\"frustrated\", \"annoyed\", \"powerless\", \"thwarted\", \"resentful\", \"impatient\"]). Avoid near-synonyms that feel identical; each option should give the user a meaningfully different angle. If `feeling` is \"\", return an empty array. For `resetActions`: an array of EXACTLY 3 short physical/somatic moves the user can do right now (each <2 minutes, mostly anywhere) to take the edge off the feeling. Each item is an object {title, howTo}. Title is 2–5 words in sentence case (e.g. \"Physiological sigh\", \"Splash cold water\", \"Push against a wall\", \"60-second power posture\"). howTo is ONE concrete sentence with a duration, count, or rep (e.g. \"Double inhale through your nose, then one long exhale through your mouth. Five rounds.\"). Lean on evidence-backed regulation: physiological sigh, dive reflex (cold water/ice on face), vagal toning (long exhales, humming, gargling), bilateral movement (brisk walk, butterfly tap), grounding (5-4-3-2-1 senses, hold ice), expansive posture, hand-on-heart self-touch, isometric push for anger, sunlight exposure for low mood. Match the SPECIFIC feeling: anger/resentful → isometric push or vigorous walk; anxious/scared → physiological sigh, cold water, long exhales; sad/lonely → sunlight, self-touch, gentle movement; ashamed/embarrassed → power posture, cold water, humming; numb/disconnected → high-arousal (jumping jacks, ice, cold shower); hurt → hand-on-heart, slow box breath, bilateral tap. Use the entry context (at work, alone, in public, in bed) to keep suggestions plausible — don't suggest jumping jacks in a meeting. Never suggest journaling, \"be gentle with yourself\", substances, food, screens, or \"talk to someone/a therapist\". If `feeling` is \"\", return an empty array.",
@@ -134,17 +134,23 @@ export async function POST(request) {
     });
 
     if (!response.ok) {
+      const errBody = await response.text().catch(() => "");
+      console.error("[analyze] Anthropic HTTP", response.status, errBody.slice(0, 400));
       return Response.json({ analysis: fallbackAnalysis(entryText), source: "fallback" });
     }
 
     const payload = await response.json();
     const text = payload?.content?.find((item) => item?.type === "text")?.text?.trim() || "";
+    if (payload?.stop_reason === "max_tokens") {
+      console.error("[analyze] Anthropic truncated output (max_tokens); len=", text.length);
+    }
     const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
 
     let parsed;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
+      console.error("[analyze] JSON parse failed; stop_reason=", payload?.stop_reason, "len=", cleaned.length);
       return Response.json({ analysis: fallbackAnalysis(entryText), source: "fallback" });
     }
 

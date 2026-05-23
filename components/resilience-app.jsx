@@ -2171,6 +2171,7 @@ export default function ResilienceApp() {
   const [eventText, setEventText] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeSource, setAnalyzeSource] = useState(null);
   const [eventForm, setEventForm] = useState({
     fact: "",
     story: "",
@@ -3264,6 +3265,7 @@ export default function ResilienceApp() {
     async function runAnalysis() {
       try {
         setIsAnalyzing(true);
+        setAnalyzeSource(null);
         const response = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3273,12 +3275,15 @@ export default function ResilienceApp() {
           })
         });
         if (!response.ok) {
+          setAnalyzeSource("error");
           setAnalysis(detectSteps(eventText));
           return;
         }
         const payload = await response.json();
         const aiAnalysis = payload?.analysis;
+        setAnalyzeSource(payload?.source || null);
         if (!aiAnalysis) {
+          setAnalyzeSource("fallback");
           setAnalysis(detectSteps(eventText));
           return;
         }
@@ -3311,6 +3316,7 @@ export default function ResilienceApp() {
         }));
       } catch (error) {
         console.error(error);
+        setAnalyzeSource("error");
         setAnalysis(detectSteps(eventText));
       } finally {
         setIsAnalyzing(false);
@@ -3362,6 +3368,7 @@ export default function ResilienceApp() {
     });
     setEventText("");
     setAnalysis(null);
+    setAnalyzeSource(null);
     // Keep logEntryDateKey so the Diary list below still matches the day just saved (see diaryEntriesForSelectedLogDate).
     setTab("log");
   }
@@ -4364,7 +4371,14 @@ export default function ResilienceApp() {
                     </CardHeader>
                     <CardContent>
                       {analysis ? (
-                        <div key={triggerResultRevealKey} className="space-y-4">
+                        <motion.div key={triggerResultRevealKey} className="space-y-4">
+                          {analyzeSource === "fallback" || analyzeSource === "error" ? (
+                            <p className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+                              {analyzeSource === "error"
+                                ? "Analysis failed — check you’re signed in, then tap Analyze entry again."
+                                : "AI couldn’t finish this read (often a truncated reply). Tap Analyze entry again."}
+                            </p>
+                          ) : null}
                           <LogTriggerStepsReveal analysis={analysis} reduceMotion={reduceMotion} />
                           <CeremonialInsightBlock
                             label="Facts"
@@ -4460,7 +4474,7 @@ export default function ResilienceApp() {
                           <Button className="w-full" onClick={saveEventEntry}>
                             Save to diary
                           </Button>
-                        </div>
+                        </motion.div>
                       ) : (
                         <p className="rounded-3xl bg-slate-50 p-5 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                           Analyze an entry to trigger guided prompts.
