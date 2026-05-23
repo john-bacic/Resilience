@@ -1494,7 +1494,7 @@ function CeremonialInsightBlock({ label, text, sectionIndex, reduceMotion, revea
  *
  * Limits: max 32 chars / ~2 words, soft-enforced client-side (server also sanitizes).
  */
-function FeelingChip({ value, onChange, sectionIndex, reduceMotion, revealKey }) {
+function FeelingChip({ value, options, onChange, sectionIndex, reduceMotion, revealKey }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || "");
   const inputRef = useRef(null);
@@ -1537,6 +1537,22 @@ function FeelingChip({ value, onChange, sectionIndex, reduceMotion, revealKey })
 
   const display = (value || "").trim();
   const hasValue = display.length > 0;
+  const rawOptions = Array.isArray(options) ? options : [];
+  const normalizedOptions = [];
+  const seen = new Set();
+  for (const raw of rawOptions) {
+    const opt = String(raw || "").trim().toLowerCase();
+    if (!opt || seen.has(opt)) continue;
+    seen.add(opt);
+    normalizedOptions.push(opt);
+    if (normalizedOptions.length >= 6) break;
+  }
+  // Keep a custom (user-typed) value visible as a selected chip even if it's not in options.
+  const optionsWithValue =
+    hasValue && !seen.has(display)
+      ? [display, ...normalizedOptions].slice(0, 6)
+      : normalizedOptions;
+  const hasOptions = optionsWithValue.length > 0;
 
   return (
     <motion.section
@@ -1587,7 +1603,9 @@ function FeelingChip({ value, onChange, sectionIndex, reduceMotion, revealKey })
             </h3>
           </div>
           <p className="mt-1.5 text-[11px] leading-snug text-rose-900/70 dark:text-rose-200/70">
-            One or two words. Naming it quiets the part of your brain that&apos;s firing.
+            {hasOptions
+              ? "Pick the one that feels closest — or tap other to name your own."
+              : "One or two words. Naming it quiets the part of your brain that\u2019s firing."}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {editing ? (
@@ -1615,6 +1633,34 @@ function FeelingChip({ value, onChange, sectionIndex, reduceMotion, revealKey })
                 />
                 <span className="text-[10px] text-rose-700/70 dark:text-rose-300/70">enter to save · esc to cancel</span>
               </>
+            ) : hasOptions ? (
+              <>
+                {optionsWithValue.map((opt) => {
+                  const isSelected = opt === display;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => onChange(isSelected ? "" : opt)}
+                      aria-pressed={isSelected}
+                      className={
+                        isSelected
+                          ? "inline-flex items-center gap-1.5 rounded-full border border-rose-400/70 bg-rose-100 px-3 py-1.5 text-base font-semibold lowercase tracking-tight text-rose-950 transition hover:bg-rose-200 dark:border-rose-500/70 dark:bg-rose-900/40 dark:text-rose-50 dark:hover:bg-rose-900/60"
+                          : "inline-flex items-center gap-1.5 rounded-full border border-rose-300/60 bg-white px-3 py-1.5 text-sm font-medium lowercase text-rose-800 transition hover:bg-rose-50 dark:border-rose-700/60 dark:bg-slate-900 dark:text-rose-200 dark:hover:bg-rose-950/40"
+                      }
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-rose-400/60 bg-white px-3 py-1.5 text-sm font-medium italic text-rose-700 transition hover:bg-rose-50 dark:border-rose-500/50 dark:bg-slate-900 dark:text-rose-200 dark:hover:bg-rose-950/30"
+                >
+                  other…
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -1636,6 +1682,121 @@ function FeelingChip({ value, onChange, sectionIndex, reduceMotion, revealKey })
               </>
             )}
           </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+/**
+ * "Try this now" block — 3 short somatic moves the user can do right after
+ * naming the feeling, before the Lesson reveal. Each card lists a title
+ * (the move) and a one-line howTo (concrete duration/count).
+ *
+ * Why this UX:
+ *  - Affect labeling (Lieberman 2007) dampens amygdala activity, but the
+ *    arousal that drove the trigger still lives in the body. Pairing the
+ *    label with an immediate physical regulator (physiological sigh,
+ *    dive reflex, vagal toning, isometric load, bilateral movement)
+ *    shortens the recovery window.
+ *  - Sits between Name-the-feeling and Lesson so the *body* is regulated
+ *    before the cognitive takeaway lands.
+ *
+ * Renders nothing when `actions` is empty (e.g. neutral entries, fallback
+ * analysis path) so the ceremony degrades gracefully.
+ */
+function ResetActionsBlock({ actions, sectionIndex, reduceMotion, revealKey }) {
+  const list = Array.isArray(actions) ? actions.slice(0, 3) : [];
+  if (list.length === 0) return null;
+
+  const blockEnterDelay = reduceMotion
+    ? 0.06 * sectionIndex
+    : INSIGHT_SEQUENCE_FIRST + sectionIndex * INSIGHT_SEQUENCE_GAP;
+  const lineKey = `${revealKey}-reset`;
+
+  return (
+    <motion.section
+      initial={
+        reduceMotion
+          ? { opacity: 0 }
+          : { opacity: 0, y: 32, scale: 0.94, filter: "blur(8px)" }
+      }
+      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      transition={{
+        delay: blockEnterDelay,
+        duration: reduceMotion ? 0.28 : 0.6,
+        ease: [0.15, 1, 0.28, 1]
+      }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-50 via-white to-cyan-50/40 p-4 ring-1 ring-sky-200/50 dark:from-sky-950/30 dark:via-slate-800 dark:to-cyan-950/20 dark:ring-sky-900/35"
+    >
+      {!reduceMotion && (
+        <motion.div
+          key={lineKey}
+          aria-hidden
+          className="pointer-events-none absolute inset-x-6 top-0 h-0.5 bg-gradient-to-r from-transparent via-sky-400/60 to-transparent"
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{ delay: blockEnterDelay + 0.06, duration: 0.85, ease: [0.2, 1, 0.36, 1] }}
+          style={{ transformOrigin: "center" }}
+        />
+      )}
+      <div className="flex gap-3">
+        <motion.div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-sky-300/60 bg-sky-100/70 text-[11px] font-bold tabular-nums text-sky-900 dark:border-sky-600 dark:bg-sky-900/45 dark:text-sky-100"
+          initial={reduceMotion ? undefined : { scale: 0, rotate: -14 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{
+            delay: blockEnterDelay + 0.12,
+            type: "spring",
+            stiffness: 280,
+            damping: 19
+          }}
+          aria-hidden
+        >
+          {String(sectionIndex + 1).padStart(2, "0")}
+        </motion.div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <RefreshCw className="h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+            <h3 className="text-[10px] font-medium uppercase tracking-[0.22em] text-sky-800/90 dark:text-sky-300/95">
+              Try this now
+            </h3>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-snug text-sky-900/70 dark:text-sky-200/70">
+            Quick body-based moves to take the edge off. Pick one — under two minutes each.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {list.map((action, idx) => {
+              const itemDelay = reduceMotion
+                ? blockEnterDelay + 0.04 * idx
+                : blockEnterDelay + 0.18 + idx * 0.12;
+              return (
+                <motion.li
+                  key={`${action.title}-${idx}`}
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    delay: itemDelay,
+                    duration: reduceMotion ? 0.25 : 0.45,
+                    ease: [0.15, 1, 0.28, 1]
+                  }}
+                  className="rounded-xl border border-sky-200/60 bg-white/80 p-3 dark:border-sky-800/60 dark:bg-slate-900/60"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[10px] font-bold tabular-nums text-sky-700/70 dark:text-sky-300/70">
+                      {String(idx + 1).padStart(2, "0")}
+                    </span>
+                    <p className="text-sm font-semibold text-sky-950 dark:text-sky-50">
+                      {action.title}
+                    </p>
+                  </div>
+                  <p className="mt-1 pl-6 text-sm leading-snug text-slate-700 dark:text-slate-200">
+                    {action.howTo}
+                  </p>
+                </motion.li>
+              );
+            })}
+          </ul>
         </div>
       </div>
     </motion.section>
@@ -2017,6 +2178,8 @@ export default function ResilienceApp() {
     insideControl: "",
     chosenResponse: "",
     feeling: "",
+    feelingOptions: [],
+    resetActions: [],
     lesson: "",
     moodBefore: "reflective",
     moodAfter: "centered"
@@ -3128,7 +3291,23 @@ export default function ResilienceApp() {
           insideControl: aiAnalysis.insideControl || "",
           chosenResponse: aiAnalysis.chosenResponse || "",
           lesson: aiAnalysis.lesson || "",
-          feeling: aiAnalysis.feeling || ""
+          feeling: aiAnalysis.feeling || "",
+          feelingOptions: Array.isArray(aiAnalysis.feelingOptions)
+            ? aiAnalysis.feelingOptions.filter((s) => typeof s === "string" && s.trim()).slice(0, 6)
+            : [],
+          resetActions: Array.isArray(aiAnalysis.resetActions)
+            ? aiAnalysis.resetActions
+                .filter(
+                  (item) =>
+                    item &&
+                    typeof item === "object" &&
+                    typeof item.title === "string" &&
+                    typeof item.howTo === "string" &&
+                    item.title.trim() &&
+                    item.howTo.trim()
+                )
+                .slice(0, 3)
+            : []
         }));
       } catch (error) {
         console.error(error);
@@ -4224,6 +4403,7 @@ export default function ResilienceApp() {
                           />
                           <FeelingChip
                             value={eventForm.feeling}
+                            options={eventForm.feelingOptions}
                             onChange={(v) =>
                               setEventForm((prev) => ({ ...prev, feeling: v }))
                             }
@@ -4231,10 +4411,16 @@ export default function ResilienceApp() {
                             reduceMotion={reduceMotion}
                             revealKey={triggerResultRevealKey}
                           />
+                          <ResetActionsBlock
+                            actions={eventForm.resetActions}
+                            sectionIndex={6}
+                            reduceMotion={reduceMotion}
+                            revealKey={triggerResultRevealKey}
+                          />
                           <CeremonialInsightBlock
                             label="Lesson"
                             text={eventForm.lesson}
-                            sectionIndex={6}
+                            sectionIndex={7}
                             reduceMotion={reduceMotion}
                             revealKey={triggerResultRevealKey}
                             isLesson

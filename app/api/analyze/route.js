@@ -11,7 +11,9 @@ function fallbackAnalysis(entryText) {
     insideControl: "",
     chosenResponse: "",
     lesson: "",
-    feeling: ""
+    feeling: "",
+    feelingOptions: [],
+    resetActions: []
   };
 }
 
@@ -32,6 +34,56 @@ function sanitizeFeeling(raw) {
   const result = words.join(" ");
   if (result.length > 32) return "";
   return result;
+}
+
+/**
+ * The picker UX shows ~6 nearby affect labels so the user can pick the one
+ * that resonates most (Lieberman et al., 2007 — the labeling has to be the
+ * *user's* choice). Sanitize each candidate the same way as `feeling`,
+ * dedupe, and cap at 6.
+ */
+/**
+ * `resetActions` is rendered as a row of cards in the log ceremony. Each entry
+ * must be a short {title, howTo} pair. Keep title 2–5 words, howTo to a single
+ * sentence, and drop anything malformed. Cap the list at 3.
+ */
+function sanitizeResetActions(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const title = String(item.title || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 48);
+    const howTo = String(item.howTo || item.how || item.instructions || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 220);
+    if (!title || !howTo) continue;
+    out.push({ title, howTo });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function sanitizeFeelingOptions(raw, primary) {
+  const list = Array.isArray(raw) ? raw : [];
+  const seen = new Set();
+  const out = [];
+  const primaryClean = sanitizeFeeling(primary);
+  if (primaryClean) {
+    seen.add(primaryClean);
+    out.push(primaryClean);
+  }
+  for (const item of list) {
+    const clean = sanitizeFeeling(item);
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    out.push(clean);
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 export async function POST(request) {
@@ -64,7 +116,7 @@ export async function POST(request) {
         max_tokens: 500,
         temperature: 0.4,
         system:
-          "You are a resilience journaling coach. Return strict JSON only with keys: triggered, fact, story, outsideControl, insideControl, chosenResponse, lesson, feeling. triggered must be an object with booleans step1 step2 step3. Keep text concise, practical, and in casual everyday language. For `feeling`: ONE word, lowercase, naming the core emotion underneath what the user wrote (e.g. \"lonely\", \"scared\", \"ashamed\", \"frustrated\", \"hurt\", \"resentful\"). Two words ONLY when one word is genuinely inadequate. Never a phrase or sentence. Pick the most precise label, not the vaguest. If the entry is purely neutral/positive, return \"\".",
+          "You are a resilience journaling coach. Return strict JSON only with keys: triggered, fact, story, outsideControl, insideControl, chosenResponse, lesson, feeling, feelingOptions, resetActions. triggered must be an object with booleans step1 step2 step3. Keep text concise, practical, and in casual everyday language. For `feeling`: ONE word, lowercase, naming the core emotion underneath what the user wrote (e.g. \"lonely\", \"scared\", \"ashamed\", \"frustrated\", \"hurt\", \"resentful\"). Two words ONLY when one word is genuinely inadequate. Never a phrase or sentence. Pick the most precise label, not the vaguest. If the entry is purely neutral/positive, return \"\". For `feelingOptions`: an array of 5–6 distinct lowercase one-word emotion labels in the same affective vicinity as `feeling`, so the user can pick the one that resonates. Include `feeling` as the first item. Vary precision and shade (e.g. for `lonely`: [\"lonely\", \"isolated\", \"abandoned\", \"unseen\", \"left out\", \"disconnected\"]; for `frustrated`: [\"frustrated\", \"annoyed\", \"powerless\", \"thwarted\", \"resentful\", \"impatient\"]). Avoid near-synonyms that feel identical; each option should give the user a meaningfully different angle. If `feeling` is \"\", return an empty array. For `resetActions`: an array of EXACTLY 3 short physical/somatic moves the user can do right now (each <2 minutes, mostly anywhere) to take the edge off the feeling. Each item is an object {title, howTo}. Title is 2–5 words in sentence case (e.g. \"Physiological sigh\", \"Splash cold water\", \"Push against a wall\", \"60-second power posture\"). howTo is ONE concrete sentence with a duration, count, or rep (e.g. \"Double inhale through your nose, then one long exhale through your mouth. Five rounds.\"). Lean on evidence-backed regulation: physiological sigh, dive reflex (cold water/ice on face), vagal toning (long exhales, humming, gargling), bilateral movement (brisk walk, butterfly tap), grounding (5-4-3-2-1 senses, hold ice), expansive posture, hand-on-heart self-touch, isometric push for anger, sunlight exposure for low mood. Match the SPECIFIC feeling: anger/resentful → isometric push or vigorous walk; anxious/scared → physiological sigh, cold water, long exhales; sad/lonely → sunlight, self-touch, gentle movement; ashamed/embarrassed → power posture, cold water, humming; numb/disconnected → high-arousal (jumping jacks, ice, cold shower); hurt → hand-on-heart, slow box breath, bilateral tap. Use the entry context (at work, alone, in public, in bed) to keep suggestions plausible — don't suggest jumping jacks in a meeting. Never suggest journaling, \"be gentle with yourself\", substances, food, screens, or \"talk to someone/a therapist\". If `feeling` is \"\", return an empty array.",
         messages: [
           {
             role: "user",
@@ -109,7 +161,9 @@ export async function POST(request) {
       insideControl: String(parsed?.insideControl || ""),
       chosenResponse: String(parsed?.chosenResponse || ""),
       lesson: String(parsed?.lesson || ""),
-      feeling: sanitizeFeeling(parsed?.feeling)
+      feeling: sanitizeFeeling(parsed?.feeling),
+      feelingOptions: sanitizeFeelingOptions(parsed?.feelingOptions, parsed?.feeling),
+      resetActions: sanitizeResetActions(parsed?.resetActions)
     };
 
     if (!safe.triggered.step1 && !safe.triggered.step2 && !safe.triggered.step3) {
