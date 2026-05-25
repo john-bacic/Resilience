@@ -7,14 +7,16 @@ import { usePathname } from "next/navigation";
 
 /** Routes that own their own auth CTA — header should stay minimal. */
 const HIDE_AUTH_BUTTONS_PREFIXES = ["/share/"];
+/** Exact-match routes that own their own auth CTA (e.g. signed-out pitch on `/`). */
+const HIDE_AUTH_BUTTONS_EXACT = new Set(["/"]);
 
 export default function ClerkHeader() {
   const { isSignedIn, isLoaded } = useAuth();
   const { openUserProfile } = useClerk();
   const pathname = usePathname() || "";
-  const hideAuthButtons = HIDE_AUTH_BUTTONS_PREFIXES.some((prefix) =>
-    pathname.startsWith(prefix)
-  );
+  const hideAuthButtons =
+    HIDE_AUTH_BUTTONS_EXACT.has(pathname) ||
+    HIDE_AUTH_BUTTONS_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   return (
     <header className="flex min-h-[48px] items-center justify-end gap-2 bg-slate-100 px-4 py-2 md:px-8 dark:bg-slate-950">

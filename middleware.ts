@@ -14,7 +14,13 @@ import type { NextFetchEvent } from "next/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+/**
+ * `/` is public so signed-out visitors see the marketing pitch (same surface
+ * as /share/join, without the invite token). The root page itself decides
+ * whether to render the pitch or the authed app via `auth()`.
+ */
 const isPublicRoute = createRouteMatcher([
+  "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/share/join(.*)",
