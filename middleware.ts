@@ -38,8 +38,14 @@ function shouldSkipClerk(pathname: string) {
   ) {
     return true;
   }
-  // Root-level static files from /public (fonts, icons, etc.)
-  if (/\.(ico|png|jpe?g|gif|webp|svg|woff2?|txt|xml|webmanifest)$/i.test(pathname)) {
+  // Root-level static files from /public (fonts, icons, media, etc.).
+  // Media must be here — without it, signed-out fetches for /videos/*.mp4 get
+  // redirected to /sign-in and the <video> element loads HTML instead of bytes.
+  if (
+    /\.(ico|png|jpe?g|gif|webp|svg|woff2?|txt|xml|webmanifest|mp4|m4v|mov|webm|ogg|mp3|m4a|wav)$/i.test(
+      pathname
+    )
+  ) {
     return true;
   }
   return false;
@@ -93,7 +99,7 @@ export default async function middleware(req: NextRequest, event: NextFetchEvent
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|mp4|m4v|mov|webm|ogg|mp3|m4a|wav)).*)",
     "/(api|trpc)(.*)"
   ]
 };
