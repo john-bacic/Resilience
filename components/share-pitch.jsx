@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { Play, X } from "lucide-react";
 import StoicMarkIcon from "@/components/stoic-mark-icon";
 
 /**
@@ -70,7 +72,86 @@ const PATTERN_BENEFITS = [
   "**How fast you bounce back** over weeks, in your own data, not vibes."
 ];
 
+/**
+ * Plays /public/videos/unshaken.mp4 — the 2:50 "How to never be affected" intro.
+ * The hook is the same phrase as the headline, so reusing it as the link copy
+ * keeps the promise consistent between the hero and the video.
+ */
+function VideoModal({ open, onClose }) {
+  const videoRef = useRef(null);
+  const closeBtnRef = useRef(null);
+
+  // Esc closes; body scroll locked while open so the modal feels modal.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    // Send focus to the close button so a keyboard user can dismiss without hunting.
+    queueMicrotask(() => closeBtnRef.current?.focus());
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
+
+  // Pause + reset whenever the modal closes so reopening doesn't resume mid-clip.
+  useEffect(() => {
+    if (open) return;
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+      try {
+        video.currentTime = 0;
+      } catch {
+        // Some browsers throw if metadata isn't loaded yet — safe to ignore.
+      }
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="How to never be affected by anything or anyone"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-white/10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          ref={closeBtnRef}
+          type="button"
+          onClick={onClose}
+          aria-label="Close video"
+          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-900/80 text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+        >
+          <X className="h-5 w-5" strokeWidth={2.25} />
+        </button>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video
+          ref={videoRef}
+          src="/videos/unshaken.mp4"
+          controls
+          autoPlay
+          playsInline
+          preload="metadata"
+          className="block aspect-video w-full bg-black"
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function SharePitch({ eyebrow = "Start your 30-day practice", cta }) {
+  const [videoOpen, setVideoOpen] = useState(false);
   return (
     <div className="relative isolate min-h-[80vh] bg-gradient-to-b from-slate-50 via-white to-emerald-50/40 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30">
       <div
@@ -103,7 +184,28 @@ export default function SharePitch({ eyebrow = "Start your 30-day practice", cta
             wrote about and <strong className="font-semibold text-slate-900 dark:text-white">Navy SEALs train for 12 weeks</strong>{" "}
             — distilled into a <strong className="font-semibold text-slate-900 dark:text-white">5-minute daily practice</strong>.
           </p>
+          <button
+            type="button"
+            onClick={() => setVideoOpen(true)}
+            className="group mt-4 flex w-full items-center gap-3 rounded-2xl border border-emerald-300/70 bg-white/80 px-3.5 py-3 text-left transition hover:border-emerald-400 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 dark:border-emerald-700/60 dark:bg-slate-900/55 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/40 dark:focus-visible:ring-offset-slate-950"
+          >
+            <span
+              aria-hidden
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md shadow-emerald-900/25 transition group-hover:bg-emerald-500"
+            >
+              <Play className="h-5 w-5 translate-x-[1px]" strokeWidth={2.5} fill="currentColor" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700/90 dark:text-emerald-300/90">
+                Watch · 2 min
+              </span>
+              <span className="mt-0.5 block text-sm font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                How to never be affected by anything or anyone
+              </span>
+            </span>
+          </button>
         </section>
+        <VideoModal open={videoOpen} onClose={() => setVideoOpen(false)} />
 
         {/* ===== Pain agitation + stat ===== */}
         <section className="mt-4 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/35 p-4 ring-1 ring-emerald-200/45 dark:from-slate-800 dark:via-slate-800 dark:to-emerald-950/25 dark:ring-emerald-900/35 sm:p-5">
