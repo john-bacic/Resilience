@@ -23,8 +23,7 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
-  "/share/join(.*)",
-  "/api/push/dispatch(.*)"
+  "/share/join(.*)"
 ]);
 
 /** Skip Clerk entirely: Next internals, dev overlay, service worker, typical public files. */

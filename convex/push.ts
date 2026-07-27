@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, mutation } from "./_generated/server";
+import { mutation } from "./_generated/server";
 import { requireCurrentUser } from "./lib/auth";
 
 /** Subscription payload as serialised by `PushSubscription.toJSON()`. */
@@ -58,95 +58,5 @@ export const unsubscribe = mutation({
       await ctx.db.delete(existing._id);
     }
     return { ok: true };
-  }
-});
-
-/** =========================================================================
- *  Internal helpers consumed by the cron dispatch action (`pushDispatch.ts`).
- *  ========================================================================= */
-
-/** Internal: list all push subscriptions with an owning userId. */
-export const internalListSubscriptions = internalQuery({
-  args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("pushSubscriptions"),
-      endpoint: v.string(),
-      subscription: subscriptionValidator,
-      userId: v.optional(v.id("users")),
-      reminderTime: v.string()
-    })
-  ),
-  handler: async (ctx) => {
-    const subs = await ctx.db.query("pushSubscriptions").collect();
-    const results = [] as Array<{
-      _id: import("./_generated/dataModel").Id<"pushSubscriptions">;
-      endpoint: string;
-      subscription: typeof subs[number]["subscription"];
-      userId?: import("./_generated/dataModel").Id<"users">;
-      reminderTime: string;
-    }>;
-    for (const s of subs) {
-      if (!s.userId) continue;
-      const progress = await ctx.db
-        .query("userProgress")
-        .withIndex("by_user", (q) => q.eq("userId", s.userId!))
-        .unique();
-      results.push({
-        _id: s._id,
-        endpoint: s.endpoint,
-        subscription: s.subscription,
-        userId: s.userId,
-        reminderTime: progress?.reminderTime ?? "8:00 AM"
-      });
-    }
-    return results;
-  }
-});
-
-/** Internal: delete a subscription that the push service rejected (404/410). */
-export const internalDeleteSubscription = internalMutation({
-  args: { subscriptionId: v.id("pushSubscriptions") },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.subscriptionId);
-    if (row) await ctx.db.delete(args.subscriptionId);
-    return null;
-  }
-});
-
-/**
- * Internal: has this user already been pushed today (idempotency)?
- * `dateKey` is the YYYY-MM-DD computed in the dispatch action.
- */
-export const internalWasSentToday = internalQuery({
-  args: { userId: v.id("users"), dateKey: v.string() },
-  returns: v.boolean(),
-  handler: async (ctx, args) => {
-    const row = await ctx.db
-      .query("pushDispatchLog")
-      .withIndex("by_user_and_date", (q) => q.eq("userId", args.userId).eq("dateKey", args.dateKey))
-      .unique();
-    return Boolean(row);
-  }
-});
-
-/** Internal: mark today's reminder as sent for this user. Idempotent. */
-export const internalMarkSent = internalMutation({
-  args: { userId: v.id("users"), dateKey: v.string() },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("pushDispatchLog")
-      .withIndex("by_user_and_date", (q) => q.eq("userId", args.userId).eq("dateKey", args.dateKey))
-      .unique();
-    if (!existing) {
-      await ctx.db.insert("pushDispatchLog", {
-        userId: args.userId,
-        dateKey: args.dateKey,
-        sentAt: Date.now()
-      });
-    }
-    return null;
   }
 });
